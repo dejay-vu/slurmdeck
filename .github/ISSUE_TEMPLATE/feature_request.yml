@@ -1,0 +1,64 @@
+name: Feature request
+description: Propose a focused improvement to SlurmDeck
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing an improvement. For large behavioral or data-format changes,
+        describe the compatibility and safety implications explicitly.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What workflow is difficult or impossible today, and who is affected?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the user-visible result rather than only an implementation.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - CLI
+        - TUI
+        - Remote and SSH
+        - Runs and Slurm submission
+        - Environments
+        - Snapshots and results
+        - Packaging or documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Include current workarounds or simpler approaches you considered.
+
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility and safety
+      description: Note effects on existing configuration, remote state, destructive operations, or cluster policy.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues for similar requests.
+          required: true
+        - label: This request does not include credentials, private cluster details, or personal data.
+          required: true

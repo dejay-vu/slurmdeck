@@ -93,6 +93,9 @@ installs the wheel and source distribution.
 
 ## Pull requests
 
+Use a Conventional Commit-formatted pull request title. SlurmDeck uses squash
+merges, so the pull request title becomes the commit subject on `main`.
+
 Describe the user-visible change, safety implications, and checks performed.
 Keep unrelated refactoring out of the same pull request. Review feedback may
 request smaller commits or additional failure-path coverage.

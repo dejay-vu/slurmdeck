@@ -27,6 +27,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           BEFORE_SHA: ${{ github.event.before }}
           EVENT_NAME: ${{ github.event_name }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           set -euo pipefail
 
@@ -55,6 +56,11 @@ jobs:
             git show --no-patch --format=%B "$commit" > "$RUNNER_TEMP/commit-message"
             cz check --commit-msg-file "$RUNNER_TEMP/commit-message"
           done
+
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            echo "Checking pull request title"
+            cz check --message "$PR_TITLE"
+          fi
 
   checks:
     runs-on: ubuntu-latest
@@ -110,6 +116,7 @@ jobs:
               "/LICENSE",
               "/README.md",
               "/CHANGELOG.md",
+              "/CODE_OF_CONDUCT.md",
               "/CONTRIBUTING.md",
               "/SECURITY.md",
               "/docs/configuration.md",
