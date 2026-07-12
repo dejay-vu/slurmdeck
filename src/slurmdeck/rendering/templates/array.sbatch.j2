@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+#SBATCH --job-name={{ job_name }}
+#SBATCH --time={{ resources.time }}
+#SBATCH --cpus-per-task={{ resources.cpus }}
+#SBATCH --mem={{ resources.mem }}
+{% if resources.partition %}
+#SBATCH --partition={{ resources.partition }}
+{% endif %}
+{% if resources.account %}
+#SBATCH --account={{ resources.account }}
+{% endif %}
+{% if resources.qos %}
+#SBATCH --qos={{ resources.qos }}
+{% endif %}
+{% if resources.constraint %}
+#SBATCH --constraint={{ resources.constraint }}
+{% endif %}
+{% if resources.gres %}
+#SBATCH --gres={{ resources.gres }}
+{% endif %}
+#SBATCH --array=0-{{ task_count - 1 }}{% if resources.max_parallel %}%{{ resources.max_parallel }}{% endif %}
+
+#SBATCH --output={{ run_root }}/logs/task_%A_%a.out
+#SBATCH --error={{ run_root }}/logs/task_%A_%a.err
+
+exec python3 {{ (run_root ~ "/agent.py") | shell_quote }} exec \
+  --run-root {{ run_root | shell_quote }} \
+  --code-dir {{ code_dir | shell_quote }} \
+  --index "$SLURM_ARRAY_TASK_ID"

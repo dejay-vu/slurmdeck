@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1238 782.0">
+  <style>
+    .terminal-SNAPSHOT-matrix { font-family: Fira Code, monospace; font-size: 20px; line-height: 24.4px; font-variant-east-asian: full-width; }
+    .terminal-SNAPSHOT-title { font-size: 18px; font-weight: bold; font-family: arial; }
+    .terminal-SNAPSHOT-r1 { fill: #ffffff;font-weight: bold }
+    .terminal-SNAPSHOT-r2 { fill: #b3b3b3 }
+    .terminal-SNAPSHOT-r3 { fill: #ffffff }
+    .terminal-SNAPSHOT-r4 { fill: #c5c8c6 }
+    .terminal-SNAPSHOT-r5 { fill: #a8a8a8 }
+    .terminal-SNAPSHOT-r6 { fill: #4e4e4e }
+  </style>
+  <g class="terminal-SNAPSHOT-matrix">
+    <rect fill="#292929" height="780" rx="8" stroke="rgba(255,255,255,0.35)" stroke-width="1" width="1236" x="1" y="1" />
+    <rect fill="#222222" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="1.5" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="25.9" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="50.3" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="74.7" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="122" x="0" y="99.1" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="122" x="0" y="123.5" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="147.9" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="172.3" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="196.7" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="221.1" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="245.5" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="269.9" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="294.3" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="318.7" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="343.1" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="367.5" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="391.9" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="416.3" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="440.7" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="465.1" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="489.5" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="513.9" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="538.3" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="562.7" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="587.1" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="611.5" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="635.9" />
+    <rect fill="#000000" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="660.3" />
+    <rect fill="#222222" height="24.65" shape-rendering="crispEdges" width="61" x="0" y="684.7" />
+    <rect fill="#222222" height="24.65" shape-rendering="crispEdges" width="61" x="610" y="684.7" />
+    <rect fill="#222222" height="24.65" shape-rendering="crispEdges" width="1220" x="0" y="709.1" />
+    <text class="terminal-SNAPSHOT-title" fill="#c5c8c6" text-anchor="middle" x="618" y="27">SlurmDeck UX fixture</text>
+    <circle cx="0" cy="0" fill="#ff5f57" r="7" />
+    <circle cx="22" cy="0" fill="#febc2e" r="7" />
+    <circle cx="44" cy="0" fill="#28c840" r="7" />
+    <text class="terminal-SNAPSHOT-r1" textLength="134.2" x="0" y="20"> SlurmDeck </text>
+    <text class="terminal-SNAPSHOT-r2" textLength="24.4" x="134.2" y="20">│ </text>
+    <text class="terminal-SNAPSHOT-r3" textLength="97.6" x="158.6" y="20">project </text>
+    <text class="terminal-SNAPSHOT-r2" textLength="24.4" x="256.2" y="20">│ </text>
+    <text class="terminal-SNAPSHOT-r3" textLength="97.6" x="280.6" y="20">cluster </text>
+    <text class="terminal-SNAPSHOT-r1" textLength="12.2" x="378.2" y="20">●</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="44.4">│</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="68.8">│</text>
+    <text class="terminal-SNAPSHOT-r1" textLength="36.6" x="707.6" y="68.8">Run</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="93.2">│</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="117.6">│</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="451.4" x="707.6" y="117.6">Select a run to inspect its identity,</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="142">│</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="268.4" x="707.6" y="142">resources, and status.</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="166.4">│</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="190.8">│</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="215.2">│</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="239.6">│</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="264">│</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="288.4">│</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="312.8">│</text>
+    <text class="terminal-SNAPSHOT-r1" textLength="134.2" x="24.4" y="337.2">No runs yet</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="337.2">│</text>
+    <text class="terminal-SNAPSHOT-r5" textLength="329.4" x="24.4" y="361.6">Submit one from your shell:</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="361.6">│</text>
+    <text class="terminal-SNAPSHOT-r5" textLength="622.2" x="24.4" y="386">slurmdeck submit --time 01:00:00 -- python train.py</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="386">│</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="410.4">│</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="434.8">│</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="459.2">│</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="483.6">│</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="508">│</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="532.4">│</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="556.8">│</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="581.2">│</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="605.6">│</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="630">│</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="654.4">│</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="12.2" x="671" y="678.8">│</text>
+    <text class="terminal-SNAPSHOT-r2" textLength="244" x="0" y="703.2"> last success AGE ago</text>
+    <text class="terminal-SNAPSHOT-r2" textLength="244" x="976" y="703.2">0 run(s) · 0 active </text>
+    <text class="terminal-SNAPSHOT-r1" textLength="36.6" x="0" y="727.6"> n </text>
+    <text class="terminal-SNAPSHOT-r3" textLength="97.6" x="36.6" y="727.6">New run </text>
+    <text class="terminal-SNAPSHOT-r6" textLength="12.2" x="988.2" y="727.6">▏</text>
+    <text class="terminal-SNAPSHOT-r1" textLength="12.2" x="1000.4" y="727.6">:</text>
+    <text class="terminal-SNAPSHOT-r3" textLength="195.2" x="1012.6" y="727.6"> Command palette</text>
+  </g>
+</svg>

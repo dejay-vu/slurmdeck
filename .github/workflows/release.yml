@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build release distributions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14"
+          cache: pip
+      - name: Install release tools
+        run: python -m pip install build packaging twine
+      - name: Verify release tag
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_IS_PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          from packaging.version import Version
+
+          with Path("pyproject.toml").open("rb") as stream:
+              version = tomllib.load(stream)["project"]["version"]
+          expected = f"v{version}"
+          actual = os.environ["RELEASE_TAG"]
+          if actual != expected:
+              raise SystemExit(f"release tag {actual!r} does not match {expected!r}")
+          marked_prerelease = os.environ["RELEASE_IS_PRERELEASE"].lower() == "true"
+          if Version(version).is_prerelease != marked_prerelease:
+              raise SystemExit("GitHub prerelease flag does not match the package version")
+          PY
+      - name: Build and validate distributions
+        run: |
+          python -m build
+          python -m twine check --strict dist/*
+          python - <<'PY'
+          import tomllib
+          from pathlib import Path
+
+          from packaging.utils import canonicalize_name, parse_sdist_filename, parse_wheel_filename
+
+          with Path("pyproject.toml").open("rb") as stream:
+              project = tomllib.load(stream)["project"]
+          wheels = list(Path("dist").glob("*.whl"))
+          sdists = list(Path("dist").glob("*.tar.gz"))
+          if len(wheels) != 1 or len(sdists) != 1:
+              raise SystemExit("release must contain exactly one wheel and one source distribution")
+          wheel_name, wheel_version, _, _ = parse_wheel_filename(wheels[0].name)
+          sdist_name, sdist_version = parse_sdist_filename(sdists[0].name)
+          expected_name = canonicalize_name(project["name"])
+          expected_version = project["version"]
+          if canonicalize_name(wheel_name) != expected_name or str(wheel_version) != expected_version:
+              raise SystemExit("wheel filename does not match project metadata")
+          if canonicalize_name(sdist_name) != expected_name or str(sdist_version) != expected_version:
+              raise SystemExit("source distribution filename does not match project metadata")
+          PY
+      - name: Smoke-test the wheel
+        run: |
+          python -m venv /tmp/slurmdeck-release
+          /tmp/slurmdeck-release/bin/python -m pip install dist/*.whl
+          expected_version=$(python -c \
+            "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          cd /tmp
+          /tmp/slurmdeck-release/bin/python -m pip check
+          EXPECTED_VERSION="$expected_version" /tmp/slurmdeck-release/bin/python -c \
+            "import os, slurmdeck; assert slurmdeck.__version__ == os.environ['EXPECTED_VERSION']"
+      - name: Upload distributions
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-dists
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/slurmdeck
+    permissions:
+      id-token: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-dists
+          path: dist/
+      - name: Publish distributions
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0

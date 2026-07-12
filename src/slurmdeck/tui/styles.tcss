@@ -1,0 +1,280 @@
+/* ---- chrome ---------------------------------------------------------- */
+
+Screen {
+    layout: vertical;
+}
+
+TopBar {
+    height: 1;
+    background: $panel;
+}
+
+StatusBar {
+    height: 1;
+    background: $panel;
+}
+
+ErrorPanel {
+    height: auto;
+    max-height: 5;
+    padding: 0 1;
+    background: $error 15%;
+    color: $foreground;
+    overflow-y: auto;
+}
+
+#status-refresh {
+    width: auto;
+}
+
+#status-operation {
+    width: 1fr;
+    content-align: center middle;
+}
+
+#status-counts {
+    width: auto;
+}
+
+/* ---- tables & body --------------------------------------------------- */
+
+KeyedTable {
+    height: 1fr;
+    scrollbar-gutter: stable;
+}
+
+ResponsiveMasterDetail {
+    height: 1fr;
+    layout: horizontal;
+}
+
+MasterPane {
+    width: 55%;
+    height: 1fr;
+}
+
+.responsive-detail {
+    width: 45%;
+    height: 1fr;
+    padding: 1 2;
+    border-left: solid $primary;
+    overflow-y: auto;
+}
+
+#remote-detail {
+    width: 45%;
+    padding: 0;
+    border-left: solid $primary;
+}
+
+#remote-detail > DetailPane {
+    width: 100%;
+    height: 1fr;
+    padding: 1 2;
+    border: none;
+}
+
+#remote-detail > #doctor-table {
+    width: 100%;
+    height: 1fr;
+    max-height: 100%;
+    border: none;
+}
+
+#task-log-detail {
+    width: 45%;
+    padding: 0;
+    border-left: solid $primary;
+}
+
+#inline-log-title {
+    height: auto;
+    min-height: 1;
+    padding: 0 1;
+    background: $surface;
+}
+
+#inline-log {
+    height: 1fr;
+}
+
+Screen.-compact MasterPane {
+    width: 100%;
+}
+
+Screen.-compact .responsive-detail {
+    display: none;
+}
+
+Screen.-split .responsive-detail {
+    display: block;
+}
+
+#doctor-table {
+    height: auto;
+    max-height: 40%;
+    border-top: solid $primary;
+}
+
+EmptyState {
+    height: 1fr;
+    content-align: center middle;
+}
+
+#run-meta {
+    height: auto;
+    padding: 0 1;
+    background: $surface;
+}
+
+#log-title {
+    height: 1;
+    padding: 0 1;
+    background: $surface;
+}
+
+#log-view {
+    height: 1fr;
+}
+
+/* ---- filter bar ---------------------------------------------------------- */
+
+FilterBar {
+    height: 1;
+    border: none;
+    padding: 0 1;
+    background: $boost;
+}
+
+FilterBar:focus {
+    border: none;
+    background: $boost;
+}
+
+/* ---- modals ---------------------------------------------------------- */
+
+ConfirmModal, InputModal {
+    align: center middle;
+}
+
+RemoteFormModal, ProfileModal, NewRunModal {
+    align: center middle;
+}
+
+#dialog {
+    width: 64;
+    height: auto;
+    padding: 1 2;
+    border: thick $primary;
+    background: $surface;
+}
+
+#dialog-message {
+    width: 100%;
+    content-align: center middle;
+    text-style: bold;
+}
+
+#dialog-detail {
+    width: 100%;
+    content-align: center middle;
+    color: $text-muted;
+    margin-top: 1;
+}
+
+#dialog-input {
+    margin-top: 1;
+}
+
+#dialog-buttons {
+    align: center middle;
+    height: auto;
+    margin-top: 1;
+}
+
+#dialog-buttons Button {
+    margin: 0 2;
+}
+
+#form-dialog {
+    width: 92%;
+    max-width: 110;
+    height: 92%;
+    padding: 1 2;
+    border: thick $primary;
+    background: $surface;
+}
+
+RemoteFormModal #form-dialog {
+    width: 68;
+    max-width: 92%;
+    height: 92%;
+}
+
+#remote-fields {
+    height: 1fr;
+}
+
+.form-title {
+    height: 2;
+    text-style: bold;
+    color: $accent;
+}
+
+.form-section {
+    height: 2;
+    margin-top: 1;
+    text-style: bold;
+    color: $primary;
+}
+
+.form-note {
+    height: auto;
+    color: $text-muted;
+}
+
+.form-row {
+    height: auto;
+}
+
+.form-row Input {
+    width: 1fr;
+}
+
+.form-row Button {
+    width: auto;
+}
+
+.form-buttons {
+    height: auto;
+    align: center middle;
+    margin-top: 1;
+}
+
+.form-buttons Button {
+    margin: 0 1;
+}
+
+#profile-fields, #run-fields {
+    height: 1fr;
+}
+
+#profile-diff {
+    height: 12;
+}
+
+/* ---- help ------------------------------------------------------------ */
+
+HelpScreen {
+    align: center middle;
+}
+
+#help-panel {
+    width: 84;
+    max-width: 95%;
+    height: auto;
+    max-height: 90%;
+    padding: 1 2;
+    border: thick $primary;
+    background: $surface;
+}

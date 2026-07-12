@@ -1,0 +1,21 @@
+# Python build and tool caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+dist/
+build/
+
+# SlurmDeck local state and generated outputs
+.slurmdeck/
+.coverage
+slurmdeck.toml
+.data/
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
