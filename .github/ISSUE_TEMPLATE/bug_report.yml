@@ -1,0 +1,84 @@
+name: Bug report
+description: Report reproducible behavior that appears incorrect
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve SlurmDeck. Search existing issues first.
+        For vulnerabilities, use the private security-reporting link instead of this form.
+
+  - type: input
+    id: version
+    attributes:
+      label: SlurmDeck version
+      description: Run `slurmdeck --version`.
+      placeholder: slurmdeck 0.1.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: interface
+    attributes:
+      label: Interface
+      options:
+        - CLI
+        - TUI
+        - Both
+        - Automation or JSON output
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and why it appears incorrect.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest commands or project setup that reproduce the problem.
+      placeholder: |
+        1. Configure ...
+        2. Run ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include the local OS and Python version, plus relevant Slurm and remote Python versions.
+      placeholder: |
+        Local: Ubuntu 24.04, Python 3.12
+        Remote: Slurm 24.11, Python 3.11
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics and logs
+      description: Include relevant output only. Remove credentials, usernames, hostnames, paths, and personal data.
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues for this problem.
+          required: true
+        - label: I removed credentials, private hostnames, personal data, and other sensitive information.
+          required: true
