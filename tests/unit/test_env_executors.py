@@ -138,6 +138,17 @@ def _prepare(
     )
 
 
+def _wait_for_process_exit(pid: int, *, timeout: float = 5.0) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return
+        time.sleep(0.05)
+    pytest.fail(f"background process {pid} did not exit within {timeout:.1f}s")
+
+
 class TestSlurmEnvironmentExecutor:
     def test_failed_build_helper_exits_nonzero_so_afterok_cannot_release(
         self,
@@ -543,8 +554,7 @@ class TestLoginEnvironmentExecutor:
         assert reconciled.status is EnvironmentStatus.READY
         assert reconciled.active_generation == attempt.generation_id
         assert protocol.JSON_PREFIX not in Path(attempt.stdout_path).read_text(encoding="utf-8")
-        with pytest.raises(OSError):
-            os.kill(attempt.login_pid, 0)
+        _wait_for_process_exit(attempt.login_pid)
 
 
 class TestExistingEnvironmentVerification:

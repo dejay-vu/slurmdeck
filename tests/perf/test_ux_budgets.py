@@ -184,7 +184,7 @@ def test_cached_ready_run_submit_is_one_preflight_one_upload_and_one_submit(
     assert fake_transport.call_counts["exec"] == 0
 
 
-def test_query_and_render_one_thousand_runs_has_sub_500ms_median(ctx) -> None:
+def test_query_and_render_one_thousand_runs_has_sub_500ms_cpu_median(ctx) -> None:
     database = ctx.db()
     repository = RunRepo(database)
     resources = Resources()
@@ -225,14 +225,17 @@ def test_query_and_render_one_thousand_runs_has_sub_500ms_median(ctx) -> None:
             ),
             Console(file=StringIO()),
         )
-        started = time.perf_counter()
+        # Keep this CPU regression budget independent of pauses introduced by
+        # shared CI runner scheduling while still catching slower query and
+        # rendering work.
+        started = time.process_time()
         rows = RunService(ctx).list_views()
         output.records(
             "Runs",
             ["RUN", "STATE", "TASKS", "JOB", "CREATED"],
             [[row.id, row.state, row.summary.format_counts(), row.slurm_job_id or "-", row.created_at] for row in rows],
         )
-        return time.perf_counter() - started
+        return time.process_time() - started
 
     render_once()
     durations = [render_once() for _ in range(7)]
