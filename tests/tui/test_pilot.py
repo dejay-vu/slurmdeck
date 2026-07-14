@@ -584,6 +584,7 @@ class TestEnvs:
             await pilot.press("2")
             await _wait_for(lambda: isinstance(app.screen, EnvsScreen))
             await pilot.press("g")
+            await _wait_for(lambda: isinstance(app.screen, ConfirmModal))
             await pilot.pause()
             assert isinstance(app.screen, ConfirmModal)
             app.screen.query_one("#yes")
