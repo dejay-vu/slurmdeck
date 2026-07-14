@@ -139,12 +139,17 @@ def _prepare(
 
 
 def _wait_for_process_exit(pid: int, *, timeout: float = 5.0) -> None:
+    if pid <= 0:
+        pytest.fail(f"invalid process ID: {pid}")
+
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
             os.kill(pid, 0)
-        except OSError:
+        except ProcessLookupError:
             return
+        except OSError as exc:
+            pytest.fail(f"unable to inspect background process {pid}: {exc}")
         time.sleep(0.05)
     pytest.fail(f"background process {pid} did not exit within {timeout:.1f}s")
 
