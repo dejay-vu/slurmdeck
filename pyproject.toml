@@ -48,7 +48,7 @@ dev = [
 slurmdeck = "slurmdeck.cli.main:main"
 
 [project.urls]
-Homepage = "https://github.com/dejay-vu/slurmdeck"
+Homepage = "https://dejayvu.com/the-lab/slurmdeck"
 Repository = "https://github.com/dejay-vu/slurmdeck.git"
 Issues = "https://github.com/dejay-vu/slurmdeck/issues"
 Documentation = "https://github.com/dejay-vu/slurmdeck/tree/main/docs"
