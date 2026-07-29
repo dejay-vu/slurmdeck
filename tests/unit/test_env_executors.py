@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from slurmdeck.agent import protocol
+from slurmdeck.agent import env_agent, protocol
 from slurmdeck.errors import UserError
 from slurmdeck.models.cluster import (
     BuildExecutor,
@@ -66,7 +66,13 @@ def _project(project_dir: Path, *, post_install: list[str] | None = None, smoke_
     return ProjectConfig(
         project_id="project-1",
         display_name="research",
-        resources=Resources(time="01:00:00", cpus=2, mem="8G", partition="short"),
+        resources=Resources(
+            time="01:00:00",
+            cpus=2,
+            mem="8G",
+            partition="short",
+            reservation="research",
+        ),
         env=CondaEnvSpec(
             name="ml",
             post_install=post_install or [],
@@ -152,6 +158,11 @@ def _wait_for_process_exit(pid: int, *, timeout: float = 5.0) -> None:
             pytest.fail(f"unable to inspect background process {pid}: {exc}")
         time.sleep(0.05)
     pytest.fail(f"background process {pid} did not exit within {timeout:.1f}s")
+
+
+def test_remote_env_agent_rejects_reservation_option_injection():
+    with pytest.raises(ValueError, match="reservation"):
+        env_agent._directive("reservation", "research --exclusive")
 
 
 class TestSlurmEnvironmentExecutor:
@@ -263,10 +274,15 @@ class TestSlurmEnvironmentExecutor:
             created.record.env_id,
             attempt.generation_id,
         )
+        assert attempt.resolved_resources is not None
+        assert attempt.resolved_resources.reservation == "research"
         assert len(fake_transport.uploads) == 1
         assert (Path(attempt.build_dir) / ".condarc").is_file()
         assert (Path(attempt.build_dir) / "isolated-environment.yml").is_file()
         assert " > /dev/null" in (Path(attempt.build_dir) / "build.sbatch").read_text(encoding="utf-8")
+        assert "#SBATCH --reservation=research" in (Path(attempt.build_dir) / "build.sbatch").read_text(
+            encoding="utf-8"
+        )
         assert (remote_root / ".shims" / "sbatch.count").read_text(encoding="utf-8").strip() == "1"
 
         attached = _prepare(

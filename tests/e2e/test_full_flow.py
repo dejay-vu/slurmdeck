@@ -139,17 +139,30 @@ def test_full_lifecycle_over_shimmed_ssh(e2e):
     cli("init")
     assert (project / ".slurmdeck" / "project.yaml").exists()
 
-    cli("submit", "--name", "demo", "--time", "00:10:00", "--", "python3", "train.py")
+    cli(
+        "submit",
+        "--name",
+        "demo",
+        "--time",
+        "00:10:00",
+        "--reservation",
+        "research",
+        "--",
+        "python3",
+        "train.py",
+    )
     listing = cli("run", "list", "--json")
     rows = json.loads(listing.stdout)["data"]
     assert len(rows) == 1
     run_id = rows[0]["id"]
     assert rows[0]["slurm_job_id"] == "424242"
     assert rows[0]["resources"]["time"] == "00:10:00"
+    assert rows[0]["resources"]["reservation"] == "research"
 
     # snapshot + run dir made it to the "cluster" through the rsync shim
     remote_run = base / "runs" / run_id
     assert (remote_run / "submit.sbatch").exists()
+    assert "#SBATCH --reservation=research" in (remote_run / "submit.sbatch").read_text()
     assert (remote_run / "agent.py").exists()
     assert (remote_run / "tasks.jsonl").exists()
     snapshots = list((base / "snapshots").iterdir())

@@ -49,9 +49,24 @@ class TestNames:
 
 class TestResources:
     def test_merge_applies_only_set_overrides(self):
-        merged = Resources(time="12:00:00", cpus=4).merged(ResourceOverrides(time="01:00:00"))
+        merged = Resources(time="12:00:00", cpus=4, reservation="base").merged(
+            ResourceOverrides(time="01:00:00", reservation="research")
+        )
         assert merged.time == "01:00:00"
         assert merged.cpus == 4
+        assert merged.reservation == "research"
+
+    def test_reservation_must_be_one_nonempty_token(self):
+        for model in (Resources, ResourceOverrides):
+            with pytest.raises(ValidationError, match="reservation"):
+                model(reservation="")
+            with pytest.raises(ValidationError, match="reservation"):
+                model(reservation="research --exclusive")
+
+    def test_project_config_accepts_reservation(self):
+        config = ProjectConfig.model_validate({**PROJECT_IDENTITY, "resources": {"reservation": "research"}})
+
+        assert config.resources.reservation == "research"
 
 
 class TestProjectConfig:

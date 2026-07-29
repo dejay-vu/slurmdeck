@@ -149,6 +149,10 @@ For later runs, the two steps may be combined:
 slurmdeck submit --time 04:00:00 --gres gpu:1 -- python train.py
 ```
 
+Clusters that allocate nodes through named Slurm reservations can set
+`resources.reservation` in `.slurmdeck/project.yaml` or pass
+`--reservation <name>` for one run.
+
 ### 6. Follow the run and download results
 
 Use the same Run ID printed during planning or submission:

@@ -259,7 +259,20 @@ class TestRunFlow:
         assert data[0]["env_dependency_reason"] == "Waiting for build 42"
 
     def test_submit_plan_only_then_run_commands(self, ctx, fake_transport):
-        result = runner.invoke(app, ["submit", "--plan-only", "--name", "demo", "--", "python3", "train.py"])
+        result = runner.invoke(
+            app,
+            [
+                "submit",
+                "--plan-only",
+                "--name",
+                "demo",
+                "--reservation",
+                "research",
+                "--",
+                "python3",
+                "train.py",
+            ],
+        )
         assert result.exit_code == 0, result.output
 
         result = runner.invoke(app, ["run", "list", "--json"])
@@ -268,6 +281,7 @@ class TestRunFlow:
         run_id = rows[0]["id"]
         assert rows[0]["state"] == "planned"
         assert rows[0]["resources"]["time"] == "12:00:00"
+        assert rows[0]["resources"]["reservation"] == "research"
         assert rows[0]["summary"] == {"total": 1, "counts": {"PENDING": 1}}
 
         result = runner.invoke(app, ["run", "submit", run_id])

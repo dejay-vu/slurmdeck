@@ -369,6 +369,7 @@ class NewRunModal(ModalScreen[NewRunDraft | None]):
                 yield Input(value=self.resources.partition or "", placeholder="partition", id="run-partition")
                 yield Input(value=self.resources.account or "", placeholder="account", id="run-account")
                 yield Input(value=self.resources.qos or "", placeholder="qos", id="run-qos")
+                yield Input(value=self.resources.reservation or "", placeholder="reservation", id="run-reservation")
                 yield Input(value=self.resources.constraint or "", placeholder="constraint", id="run-constraint")
                 yield Input(
                     value=str(self.resources.max_parallel) if self.resources.max_parallel is not None else "",
@@ -423,6 +424,7 @@ class NewRunModal(ModalScreen[NewRunDraft | None]):
                 partition=_optional(self.query_one("#run-partition", Input).value),
                 account=_optional(self.query_one("#run-account", Input).value),
                 qos=_optional(self.query_one("#run-qos", Input).value),
+                reservation=_optional(self.query_one("#run-reservation", Input).value),
                 constraint=_optional(self.query_one("#run-constraint", Input).value),
                 max_parallel=self._integer("#run-max-parallel"),
             )

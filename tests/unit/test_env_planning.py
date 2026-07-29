@@ -253,13 +253,20 @@ class TestEnvironmentPlanResolution:
             partition="short",
             account="science",
             qos="normal",
+            reservation="shared",
             constraint="a100",
             max_parallel=7,
         )
         spec = CondaEnvSpec(
             name="ml",
             modules=["ml-runtime"],
-            build_resources=ResourceOverrides(time="02:00:00", cpus=6, mem="32G", constraint="h100"),
+            build_resources=ResourceOverrides(
+                time="02:00:00",
+                cpus=6,
+                mem="32G",
+                reservation="build",
+                constraint="h100",
+            ),
         )
 
         plan = _plan(tmp_path, _project(spec, resources=resources), profile=_profile(), observation=_observation())
@@ -272,6 +279,7 @@ class TestEnvironmentPlanResolution:
             partition="short",
             account="science",
             qos="normal",
+            reservation="build",
             constraint="h100",
             max_parallel=7,
         )

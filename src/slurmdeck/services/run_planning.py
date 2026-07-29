@@ -369,7 +369,7 @@ class RunPlanner:
             raise UserError("Run resources cpus must be greater than zero.")
         if resources.max_parallel is not None and resources.max_parallel <= 0:
             raise UserError("Run resources max_parallel must be greater than zero.")
-        for field in ("time", "mem", "gres", "partition", "account", "qos", "constraint"):
+        for field in ("time", "mem", "gres", "partition", "account", "qos", "reservation", "constraint"):
             value = getattr(resources, field)
             if value is None:
                 continue

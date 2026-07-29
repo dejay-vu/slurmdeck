@@ -54,6 +54,7 @@ def submit_command(
     partition: str | None = typer.Option(None, "--partition", help="Partition override."),
     account: str | None = typer.Option(None, "--account", help="Account override."),
     qos: str | None = typer.Option(None, "--qos", help="QOS override."),
+    reservation: str | None = typer.Option(None, "--reservation", help="Slurm reservation override."),
     constraint: str | None = typer.Option(None, "--constraint", help="Constraint override."),
     max_parallel: int | None = typer.Option(None, "--max-parallel", help="Max concurrent array tasks."),
     plan_only: bool = typer.Option(False, "--plan-only", help="Plan locally without submitting."),
@@ -86,6 +87,7 @@ def submit_command(
         partition=partition,
         account=account,
         qos=qos,
+        reservation=reservation,
         constraint=constraint,
         max_parallel=max_parallel,
     )

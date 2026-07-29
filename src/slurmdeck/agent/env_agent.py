@@ -462,6 +462,8 @@ def _directive(name, value):
     text = str(value)
     if "\n" in text or "\r" in text:
         raise ValueError(f"resource {name} contains a newline")
+    if name == "reservation" and any(character.isspace() for character in text):
+        raise ValueError("resource reservation contains whitespace")
     return f"#SBATCH --{name}={text}\n"
 
 
@@ -477,6 +479,7 @@ def _render_sbatch(base, request, attempt):
         _directive("partition", resources.get("partition")),
         _directive("account", resources.get("account")),
         _directive("qos", resources.get("qos")),
+        _directive("reservation", resources.get("reservation")),
         _directive("constraint", resources.get("constraint")),
         _directive("output", attempt["stdout_path"]),
         _directive("error", attempt["stderr_path"]),

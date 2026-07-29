@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from slurmdeck.agent import protocol
 from slurmdeck.errors import UserError
@@ -47,7 +48,7 @@ def test_planner_is_pure_and_renders_the_complete_run_payload(ctx, remote):
         sweep=SWEEP,
         sweep_file="sweeps/smoke.yaml",
         name="smoke",
-        overrides=ResourceOverrides(time="00:30:00"),
+        overrides=ResourceOverrides(time="00:30:00", reservation="research"),
         remote=remote,
     )
 
@@ -55,6 +56,7 @@ def test_planner_is_pure_and_renders_the_complete_run_payload(ctx, remote):
     assert plan.manifest.run_id == plan.run_id
     assert plan.manifest.task_count == 2
     assert plan.manifest.resources.time == "00:30:00"
+    assert plan.manifest.resources.reservation == "research"
     assert len(plan.tasks) == 2
     assert plan.tasks[0].record.spec.env == {"SEED": "0"}
     assert plan.tasks[0].rendered_config == b"model: smoke\nseed: 0\n"
@@ -80,6 +82,7 @@ def test_planner_is_pure_and_renders_the_complete_run_payload(ctx, remote):
     assert task_lines[0]["argv"][3].endswith(".yaml")
     assert b"#SBATCH --array=0-1" in plan.rendered_files[protocol.SBATCH_FILE]
     assert b"--time=00:30:00" in plan.rendered_files[protocol.SBATCH_FILE]
+    assert b"#SBATCH --reservation=research" in plan.rendered_files[protocol.SBATCH_FILE]
     assert json.loads(plan.rendered_files[protocol.RUN_MANIFEST_FILE]) == plan.manifest.model_dump(mode="json")
     _assert_no_run_state(ctx)
 
@@ -170,6 +173,15 @@ def test_planner_rejects_control_characters_in_every_rendered_resource(ctx, remo
 
     with pytest.raises(UserError, match=f"resources {field}"):
         RunPlanner(ctx).plan(command=CommandTemplateSpec(argv=["true"]), overrides=overrides, remote=remote)
+
+    _assert_no_run_state(ctx)
+
+
+def test_reservation_whitespace_is_rejected_before_run_state(ctx):
+    _remove_database(ctx)
+
+    with pytest.raises(ValidationError, match="reservation"):
+        ResourceOverrides(reservation="research --exclusive")
 
     _assert_no_run_state(ctx)
 

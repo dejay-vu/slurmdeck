@@ -7,6 +7,11 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+### Added
+
+- Slurm reservation support in project resources, per-submit CLI overrides,
+  run and managed-environment `sbatch` rendering, and the TUI run form.
+
 ## [0.1.0] - 2026-07-12
 
 Initial public release.

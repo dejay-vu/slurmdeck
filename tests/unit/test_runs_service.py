@@ -33,7 +33,12 @@ COMMAND = CommandTemplateSpec(argv=["python3", "train.py", "--config", "{config}
 
 
 def _plan(ctx, remote, **kwargs):
-    defaults = {"command": COMMAND, "sweep": SWEEP, "overrides": ResourceOverrides(time="00:30:00"), "remote": remote}
+    defaults = {
+        "command": COMMAND,
+        "sweep": SWEEP,
+        "overrides": ResourceOverrides(time="00:30:00", reservation="research"),
+        "remote": remote,
+    }
     defaults.update(kwargs)
     return RunService(ctx).plan(**defaults)
 
@@ -42,6 +47,7 @@ def test_plan_materializes_run_dir_and_db(ctx, remote):
     row = _plan(ctx, remote)
     assert row.state == "planned"
     assert row.resources.time == "00:30:00"  # override captured (retry will reuse it)
+    assert row.resources.reservation == "research"
     assert row.summary.total == 2
     assert row.summary.counts == {"PENDING": 2}
 
@@ -59,10 +65,12 @@ def test_plan_materializes_run_dir_and_db(ctx, remote):
     manifest = json.loads((run_dir / "run.json").read_text())
     assert manifest["schema_version"] == 1
     assert manifest["task_count"] == 2
+    assert manifest["resources"]["reservation"] == "research"
 
     sbatch = (run_dir / "submit.sbatch").read_text()
     assert "#SBATCH --array=0-1" in sbatch
     assert "--time=00:30:00" in sbatch
+    assert "#SBATCH --reservation=research" in sbatch
     assert "agent.py" in sbatch
     assert "eval" not in sbatch
 
@@ -215,8 +223,12 @@ def test_retry_reuses_resources_and_repoints_paths(ctx, remote, fake_transport):
     retry_row = runs.retry(row.id)
     assert retry_row.retry_of == row.id
     assert retry_row.resources.time == "00:30:00"  # original override survived
+    assert retry_row.resources.reservation == "research"
 
     retry_dir = ctx.require_project().paths.run_dir(retry_row.id)
+    retry_manifest = json.loads((retry_dir / "run.json").read_text())
+    assert retry_manifest["resources"]["reservation"] == "research"
+    assert "#SBATCH --reservation=research" in (retry_dir / "submit.sbatch").read_text()
     tasks = [json.loads(line) for line in (retry_dir / "tasks.jsonl").read_text().splitlines()]
     assert len(tasks) == 1
     assert tasks[0]["task_id"] == "001"  # original id preserved

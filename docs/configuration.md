@@ -141,6 +141,7 @@ resources:
   partition: gpu
   account: myaccount
   qos: normal
+  reservation: project-reservation
   constraint: a100
   max_parallel: 8
 env:                              # optional; managed example
@@ -164,7 +165,7 @@ sync:
   allow_sensitive_files: []        # exact reviewed paths only; normally keep empty
 ```
 
-CLI resource options overlay `resources` for one run. Environment build
+CLI resource options, including `--reservation`, overlay `resources` for one run. Environment build
 resources start from the project resources and apply only the fields present
 in `env.build_resources`; scheduler resources are attempt provenance and do
 not change environment identity.
