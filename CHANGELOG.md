@@ -7,6 +7,8 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## [0.2.0] - 2026-07-29
+
 ### Added
 
 - Slurm reservation support in project resources, per-submit CLI overrides,
@@ -42,4 +44,6 @@ Initial public release.
 - Submission receipts and locks prevent automatic duplicate submission after
   uncertain remote outcomes.
 
+[Unreleased]: https://github.com/dejay-vu/slurmdeck/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/dejay-vu/slurmdeck/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/dejay-vu/slurmdeck/releases/tag/v0.1.0

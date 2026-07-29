@@ -12,12 +12,12 @@ import pytest
 import yaml
 
 
-def test_pyproject_declares_first_release_version() -> None:
+def test_pyproject_declares_release_version() -> None:
     root = Path(__file__).parents[2]
     with (root / "pyproject.toml").open("rb") as stream:
         pyproject = tomllib.load(stream)
 
-    assert pyproject["project"]["version"] == "0.1.0"
+    assert pyproject["project"]["version"] == "0.2.0"
 
 
 def test_pyproject_declares_verified_dependency_floors() -> None:
