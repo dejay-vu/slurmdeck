@@ -218,7 +218,9 @@ def _meta_text(run: RunRow, summary: RunSummary, task_filter: TaskFilter, needle
     text.append("  ")
     text.append_text(summary_text(summary))
     text.append(
-        f"\n job {run.slurm_job_id or '-'} · remote {run.remote} · created {age(run.created_at)} ago", style="dim"
+        f"\n job {run.slurm_job_id or '-'} · target {run.target or '-'} · "
+        f"remote {run.remote} · created {age(run.created_at)} ago",
+        style="dim",
     )
     resources = run.resources.model_dump(exclude_none=True)
     if resources:

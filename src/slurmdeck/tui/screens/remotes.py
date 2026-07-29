@@ -109,7 +109,15 @@ class RemotesScreen(DeckScreen):
     def _use(self, name: str) -> None:
         RemoteService(self.ctx).use(name)
         self.deck.update_identity()
-        self.notify(f"Now using remote {name}.")
+        project = self.ctx.project
+        if project is not None and project.config.targets:
+            selection = self.ctx.resolve_project_target(self.deck.target_name or None)
+            self.notify(
+                f"Saved {name} as the user default; this project remains on "
+                f"{selection.name}@{selection.remote.name}. Use “Switch project target” to change it."
+            )
+        else:
+            self.notify(f"Now using remote {name}.")
         self.reload()
 
     def action_use_remote(self) -> None:

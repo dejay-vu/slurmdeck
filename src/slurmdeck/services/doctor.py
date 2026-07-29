@@ -33,13 +33,18 @@ class DoctorService:
     def run(
         self,
         *,
+        target_name: str | None = None,
         remote_name: str | None = None,
         operation_sink: OperationSink = noop_operation_sink,
     ) -> list[Check]:
         reporter = OperationReporter("remote.doctor", operation_sink)
         reporter.started(OperationPhase.PROBE, message="Checking local tools")
         try:
-            checks = self._run_checks(remote_name=remote_name, reporter=reporter)
+            checks = self._run_checks(
+                target_name=target_name,
+                remote_name=remote_name,
+                reporter=reporter,
+            )
         except Exception as exc:
             reporter.failed(message=str(exc))
             raise
@@ -54,12 +59,34 @@ class DoctorService:
         )
         return checks
 
-    def _run_checks(self, *, remote_name: str | None, reporter: OperationReporter) -> list[Check]:
+    def _run_checks(
+        self,
+        *,
+        target_name: str | None,
+        remote_name: str | None,
+        reporter: OperationReporter,
+    ) -> list[Check]:
         checks = self._local_tool_checks()
         reporter.started(OperationPhase.CONNECT, message="Resolving remote configuration")
         transport: Transport | None = None
+        execution = None
         try:
-            remote = self._ctx.resolve_remote(remote_name)
+            project = self._ctx.project
+            if project is None:
+                if target_name is not None:
+                    raise UserError("--target requires a slurmdeck project.")
+                remote = self._ctx.resolve_remote(remote_name)
+            elif project.config.targets and target_name is None and remote_name is not None:
+                # Deliberate remote-only diagnostics: a registered remote may
+                # be inspected without pretending its project target was
+                # selected.  Environment checks are skipped below.
+                remote = self._ctx.resolve_remote(remote_name)
+            else:
+                selection = self._ctx.resolve_project_target(target_name, remote_name=remote_name)
+                remote = selection.remote
+                execution = selection.config
+                if selection.name is not None:
+                    checks.append(Check("target", "OK", f"{selection.name} -> {remote.name}"))
             checks.append(Check("remote", "OK", f"{remote.name} ({remote.destination})"))
             transport = self._ctx.transport(remote)
         except UserError as exc:
@@ -102,10 +129,26 @@ class DoctorService:
         else:
             checks.append(Check("project", "OK", str(self._ctx.project.paths.state_dir)))
             checks.append(self._database_check())
-            if self._ctx.project.config.env is None:
-                checks.append(Check("environment", "SKIPPED", "no env configured in project.yaml"))
+            if execution is None:
+                detail = (
+                    "no target selected for this remote-only check"
+                    if self._ctx.project.config.targets
+                    else "no env configured in project.yaml"
+                )
+                checks.append(Check("environment", "SKIPPED", detail))
+            elif execution.env is None:
+                checks.append(Check("environment", "SKIPPED", "no env configured in project target"))
             else:
-                checks.append(Check("environment", "OK", f"{self._ctx.project.config.env.type} env configured"))
+                label = f" for target {execution.target}" if execution.target else ""
+                selector = f" --target {execution.target}" if execution.target else f" --remote {execution.remote}"
+                checks.append(
+                    Check(
+                        "environment",
+                        "WARN",
+                        f"{execution.env.type} env intent configured{label}; readiness not verified",
+                        f"Run `slurmdeck env plan{selector}` and prepare or inspect that environment separately.",
+                    )
+                )
         return checks
 
     @staticmethod
@@ -225,10 +268,15 @@ class DoctorService:
         except sqlite3.Error as exc:
             return Check("database", "FAILED", str(exc), "Restore or recreate the project database.")
         if version != DB_SCHEMA_VERSION:
+            fix = (
+                "Run `slurmdeck run list` once to apply the automatic project database migration."
+                if version < DB_SCHEMA_VERSION
+                else "Upgrade slurmdeck to a version that supports this project database."
+            )
             return Check(
                 "database",
                 "FAILED",
                 f"schema version {version}, expected {DB_SCHEMA_VERSION}",
-                "Use a fresh 0.1.0 project state directory.",
+                fix,
             )
         return Check("database", "OK", str(path))

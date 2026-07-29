@@ -68,6 +68,7 @@ class RunManifest(StrictModel):
     sweep_file: str | None = None
     retry_of: str | None = None
     task_count: int
+    target: str | None = None
 
     @model_validator(mode="after")
     def _supported_version(self) -> RunManifest:

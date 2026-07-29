@@ -17,6 +17,7 @@ from slurmdeck.agent import protocol
 from slurmdeck.errors import UserError
 from slurmdeck.models.common import safe_name, validate_name
 from slurmdeck.models.env import EnvBinding, EnvWaitPolicy
+from slurmdeck.models.project import ProjectExecutionConfig
 from slurmdeck.models.remote import Remote
 from slurmdeck.models.resources import ResourceOverrides, Resources
 from slurmdeck.models.run import CommandTemplateSpec, RunManifest, TaskSpec
@@ -76,8 +77,11 @@ class RunPlanner:
         overrides: ResourceOverrides | None = None,
         remote: Remote,
         env_binding: EnvBinding | None = None,
+        project_config: ProjectExecutionConfig | None = None,
     ) -> RunPlan:
-        project = self._ctx.require_project()
+        self._ctx.require_project()
+        execution = project_config or self._ctx.resolve_project_target(remote_name=remote.name).config
+        self._require_matching_remote(execution, remote)
         if name:
             validate_name(name, what="run name")
 
@@ -95,7 +99,7 @@ class RunPlanner:
             )
             for draft in drafts
         )
-        resources = project.config.resources.merged(overrides or ResourceOverrides())
+        resources = execution.resources.merged(overrides or ResourceOverrides())
         self._validate_resources(resources)
         run_id = self._new_run_id(name or (sweep.name if sweep else None) or "run")
         return self._plan_inputs(
@@ -108,6 +112,7 @@ class RunPlanner:
             sweep_file=sweep_file,
             retry_of=None,
             env_binding=env_binding,
+            project_config=execution,
         )
 
     def retry(
@@ -117,6 +122,7 @@ class RunPlanner:
         records: Mapping[str, PlannedTaskRecord],
         task_ids: Sequence[str],
         remote: Remote,
+        project_config: ProjectExecutionConfig | None = None,
     ) -> RunPlan:
         if not task_ids:
             raise UserError(f"Run {source.id} has no failed tasks to retry.")
@@ -125,7 +131,21 @@ class RunPlanner:
             raise UserError(f"Unknown task ids for run {source.id}: {', '.join(missing)}.")
 
         project = self._ctx.require_project()
+        execution = project_config or (
+            self._ctx.resolve_project_target(source.target).config
+            if source.target
+            else self._ctx.resolve_project_target(remote_name=source.remote).config
+        )
+        self._require_matching_remote(execution, remote)
         source_run_dir = project.paths.run_dir(source.id)
+        activation_path = source_run_dir / protocol.ACTIVATION_FILE
+        try:
+            activation_script = activation_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            raise UserError(
+                f"Missing or invalid local activation script for run {source.id}: {activation_path}.",
+                hint="Retry from an intact source run directory.",
+            ) from exc
         inputs: list[_TaskInput] = []
         for task_id in task_ids:
             record = records[task_id]
@@ -174,6 +194,8 @@ class RunPlanner:
                 if source.env_binding is not None
                 else None
             ),
+            project_config=execution,
+            activation_script=activation_script,
         )
 
     def _plan_inputs(
@@ -188,22 +210,31 @@ class RunPlanner:
         sweep_file: str | None,
         retry_of: str | None,
         env_binding: EnvBinding | None,
+        project_config: ProjectExecutionConfig,
+        activation_script: str | None = None,
     ) -> RunPlan:
         project = self._ctx.require_project()
         layout = self._ctx.layout(remote)
         remote_root = layout.run_root(run_id)
-        snapshot_hash, _files = self._snapshots.compute(project.paths.root, project.config.sync)
+        snapshot_hash, _files = self._snapshots.compute(project.paths.root, project_config.sync)
 
-        activation = ""
-        if project.config.env is None and env_binding is not None:
-            raise UserError("An environment binding was supplied for a project with no environment configuration.")
-        if project.config.env is not None and env_binding is None:
-            raise UserError(
-                "The run needs an exact environment binding.",
-                hint="Resolve the environment before planning the run, or run `slurmdeck submit`.",
-            )
-        if project.config.env is not None and env_binding is not None:
-            activation = activation_script_for_binding(project.config.env, remote.cluster, env_binding)
+        if activation_script is not None:
+            activation = activation_script
+        else:
+            activation = ""
+            if project_config.env is None and env_binding is not None:
+                raise UserError("An environment binding was supplied for a project with no environment configuration.")
+            if project_config.env is not None and env_binding is None:
+                raise UserError(
+                    "The run needs an exact environment binding.",
+                    hint="Resolve the environment before planning the run, or run `slurmdeck submit`.",
+                )
+            if project_config.env is not None and env_binding is not None:
+                activation = activation_script_for_binding(
+                    project_config.env,
+                    remote.cluster,
+                    env_binding,
+                )
 
         planned_tasks = tuple(
             self._plan_task(
@@ -217,8 +248,8 @@ class RunPlanner:
         )
         created_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         manifest = RunManifest(
-            project_id=project.config.project_id,
-            project_display_name=project.config.display_name,
+            project_id=project_config.project_id,
+            project_display_name=project_config.display_name,
             run_id=run_id,
             name=name,
             created_at=created_at,
@@ -243,6 +274,7 @@ class RunPlanner:
             sweep_file=sweep_file,
             retry_of=retry_of,
             task_count=len(planned_tasks),
+            target=project_config.target,
         )
 
         task_jsonl = "".join(task.record.spec.model_dump_json(exclude_none=True) + "\n" for task in planned_tasks)
@@ -250,7 +282,7 @@ class RunPlanner:
             protocol.TASKS_FILE: task_jsonl.encode(),
             protocol.AGENT_FILE: protocol.agent_source().encode(),
             protocol.ACTIVATION_FILE: activation.encode(),
-            protocol.RUN_MANIFEST_FILE: (manifest.model_dump_json(indent=2) + "\n").encode(),
+            protocol.RUN_MANIFEST_FILE: (manifest.model_dump_json(indent=2, exclude_none=True) + "\n").encode(),
             protocol.SBATCH_FILE: render_template(
                 "array.sbatch.j2",
                 job_name=run_id,
@@ -274,6 +306,16 @@ class RunPlanner:
             manifest=manifest,
             tasks=planned_tasks,
             rendered_files=MappingProxyType(rendered_files),
+        )
+
+    @staticmethod
+    def _require_matching_remote(execution: ProjectExecutionConfig, remote: Remote) -> None:
+        if execution.remote is None or execution.remote == remote.name:
+            return
+        label = f"Target {execution.target!r}" if execution.target is not None else "Project configuration"
+        raise UserError(
+            f"{label} selects remote {execution.remote!r}, but run planning received {remote.name!r}.",
+            hint="Resolve the project target once and pass its remote and execution config together.",
         )
 
     def _plan_task(

@@ -37,3 +37,4 @@ class NewRunDraft:
     overrides: ResourceOverrides
     env_wait: EnvWaitPolicy
     submit: bool
+    target_name: str | None = None

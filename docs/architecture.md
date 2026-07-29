@@ -1,8 +1,9 @@
 # Architecture
 
-SlurmDeck `0.1.0` is a clean schema-v1 implementation. Interfaces depend
-on services and service-owned views; presentation never re-derives domain
-state.
+SlurmDeck keeps its public YAML and JSON contracts on schema version 1 while
+the local project SQLite database evolves through explicit migrations.
+Interfaces depend on services and service-owned views; presentation never
+re-derives domain state.
 
 ```text
 interfaces     cli/ (Typer + Rich)             tui/ (Textual + Rich)
@@ -12,7 +13,7 @@ services       runs/status/snapshots/results/logs/remotes/doctor
 planning       run planner · placeholders · command line · sweep expansion
 remote agents  agent.py (runs)                 env_agent.py (environments)
 transport      Transport protocol · SshTransport · SSH/rsync ControlMaster
-storage        paths · YAML/user store · SQLite/repositories
+storage        paths · YAML/user store · SQLite schema 2/repositories
 models         strict Pydantic v2 contracts, schema version 1
 ```
 
@@ -206,7 +207,14 @@ one dependent run is cancelled.
 
 ## State/version policy
 
-The database, ProjectConfig, run/status manifests, environment registry,
-receipts, and JSON envelope all begin at schema version 1 for `0.1.0`.
-Only schema version 1 is supported. Unrecognized remote environment trees are
-ignored and excluded from GC scope.
+ProjectConfig, run/status manifests, the environment registry, receipts, and
+the JSON envelope use schema version 1. The local project SQLite database uses
+schema version 2 so every run can retain its selected project target; migrated
+schema-1 rows use an empty target and keep their legacy meaning.
+
+Database migration is serialized with `BEGIN IMMEDIATE`. A connection rechecks
+`user_version` after acquiring the write lock, applies DDL and the version
+advance in one transaction, and treats an existing `runs.target` column as a
+recoverable partially completed migration. Doctor only diagnoses an old
+database; opening it through a normal project command performs the migration.
+Unrecognized remote environment trees are ignored and excluded from GC scope.

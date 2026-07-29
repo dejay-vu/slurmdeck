@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from slurmdeck.errors import UserError
 from slurmdeck.models.cluster import (
     BuildExecutor,
     ClusterObservation,
@@ -33,7 +34,7 @@ from slurmdeck.models.env import (
     EnvOwnership,
     ExistingEnvSpec,
 )
-from slurmdeck.models.project import ProjectConfig
+from slurmdeck.models.project import ProjectConfig, ProjectExecutionConfig
 from slurmdeck.models.resources import ResourceOverrides, Resources
 from slurmdeck.services.env_planning import EnvironmentPlanner, EnvironmentPlanningService
 from slurmdeck.storage.paths import RemoteLayout
@@ -426,3 +427,30 @@ def test_planning_service_observes_and_scans_without_persistent_side_effects(
     assert _tree_content(ctx.require_project().paths.state_dir) == local_before
     assert _tree_content(ctx.user_paths.config_dir) == config_before
     assert _tree_content(remote_root) == remote_before
+
+
+def test_planning_service_rejects_a_target_config_from_another_remote(
+    project_dir,
+    remote,
+    remote_root,
+    fake_transport,
+):
+    execution = ProjectExecutionConfig(
+        project_id="project-1",
+        display_name="research",
+        target="jade",
+        remote="jade",
+        env=ExistingEnvSpec(prefix="/shared/jade"),
+    )
+    fake_transport.calls.clear()
+
+    with pytest.raises(UserError, match=r"selects remote 'jade'.*received 'cluster'"):
+        EnvironmentPlanningService().plan(
+            transport=fake_transport,
+            remote=remote,
+            layout=RemoteLayout(str(remote_root)),
+            project=execution,
+            project_dir=project_dir,
+        )
+
+    assert fake_transport.calls == []

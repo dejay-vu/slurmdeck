@@ -16,6 +16,7 @@ from slurmdeck.errors import UserError
 from slurmdeck.models.cluster import InvalidDependencyPolicy
 from slurmdeck.models.common import RunState
 from slurmdeck.models.env import EnvBinding, EnvWaitPolicy
+from slurmdeck.models.project import ProjectExecutionConfig
 from slurmdeck.models.remote import Remote
 from slurmdeck.models.resources import ResourceOverrides
 from slurmdeck.models.run import CommandTemplateSpec
@@ -101,6 +102,7 @@ class RunService:
         overrides: ResourceOverrides | None = None,
         remote: Remote,
         env_binding: EnvBinding | None = None,
+        project_config: ProjectExecutionConfig | None = None,
         operation_sink: OperationSink = noop_operation_sink,
     ) -> RunRow:
         reporter = OperationReporter("run.plan", operation_sink)
@@ -115,6 +117,7 @@ class RunService:
                 overrides=overrides,
                 remote=remote,
                 env_binding=env_binding,
+                project_config=project_config,
             )
             reporter.progress(OperationPhase.RECONCILE, message="Reconciling interrupted run commits")
             RunRecoveryService(self._ctx).reconcile()
@@ -472,6 +475,7 @@ class RunService:
                 records=records,
                 task_ids=task_ids or (),
                 remote=remote,
+                project_config=self._retry_project_config(source),
             )
             reporter.progress(OperationPhase.RECONCILE, message="Reconciling interrupted run commits")
             RunRecoveryService(self._ctx).reconcile()
@@ -481,6 +485,20 @@ class RunService:
             raise
         reporter.completed(OperationPhase.VALIDATE, result_counts={"tasks": row.summary.total})
         return row
+
+    def _retry_project_config(
+        self,
+        source: RunRow,
+    ) -> ProjectExecutionConfig:
+        config = self._ctx.require_project().config
+        return ProjectExecutionConfig(
+            project_id=config.project_id,
+            display_name=config.display_name,
+            target=source.target or None,
+            remote=source.remote,
+            resources=source.resources,
+            sync=config.sync,
+        )
 
     # -- cancel / clean -----------------------------------------------------------------
 

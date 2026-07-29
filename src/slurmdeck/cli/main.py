@@ -20,6 +20,7 @@ from slurmdeck.cli.run import run_app
 from slurmdeck.cli.snapshot import snapshot_app
 from slurmdeck.cli.submit import SUBMIT_HELP, submit_command
 from slurmdeck.cli.sweep import sweep_app
+from slurmdeck.cli.target import target_app
 from slurmdeck.errors import UserError
 from slurmdeck.transport.errors import TransportError
 
@@ -34,6 +35,7 @@ app.add_typer(env_app, name="env")
 app.add_typer(run_app, name="run")
 app.add_typer(snapshot_app, name="snapshot")
 app.add_typer(sweep_app, name="sweep")
+app.add_typer(target_app, name="target")
 app.command("init")(init_command)
 app.command("doctor")(doctor_command)
 app.command("ui")(ui_command)

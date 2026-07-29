@@ -24,6 +24,7 @@ from slurmdeck.models.env import (
     EnvOwnership,
 )
 from slurmdeck.models.project import ProjectConfig
+from slurmdeck.models.remote import Remote
 from slurmdeck.models.resources import ResourceOverrides, Resources
 from slurmdeck.models.run import CommandTemplateSpec
 from slurmdeck.models.sweep import Sweep
@@ -66,6 +67,18 @@ class TestBasics:
         config = load_yaml_model(ProjectPaths(project).config_path, ProjectConfig)
         assert str(uuid.UUID(config.project_id)) == config.project_id
         assert config.display_name == "research-project"
+
+    def test_init_rejects_an_invalid_remote_name_as_a_user_error(self, tmp_path, monkeypatch):
+        project = tmp_path / "research-project"
+        project.mkdir()
+        monkeypatch.chdir(project)
+
+        result = runner.invoke(app, ["init", "--remote", "../cluster"])
+
+        assert result.exit_code == 1
+        assert isinstance(result.exception, UserError)
+        assert "Invalid remote name" in str(result.exception)
+        assert not ProjectPaths(project).config_path.exists()
 
     def test_version(self):
         result = runner.invoke(app, ["--version"])
@@ -120,6 +133,27 @@ class TestRemoteCommands:
         payload = _json_data(result)
         assert payload[0]["name"] == "cluster"
         assert payload[0]["current"] is True
+
+    def test_use_explains_that_legacy_project_pin_overrides_user_default(self, ctx, remote_root):
+        ctx.user_store.add_remote(
+            Remote(
+                name="other",
+                host="user@other.example.com",
+                base=str(remote_root / "other"),
+                resolved_base=str(remote_root / "other"),
+            )
+        )
+        assert ctx.project is not None
+        ctx.project.config = ctx.project.config.model_copy(update={"remote": "cluster"})
+
+        result = runner.invoke(app, ["remote", "use", "other"])
+
+        assert result.exit_code == 0, result.output
+        assert ctx.user_store.current_remote_name() == "other"
+        assert ctx.resolve_project_target().remote.name == "cluster"
+        assert "user-level default" in result.output
+        assert "remains pinned to remote cluster" in result.output
+        assert "project pin overrides" in result.output
 
     def test_add_persists_explicit_host_key_policy(self, ctx):
         result = runner.invoke(

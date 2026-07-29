@@ -1,6 +1,7 @@
 # Configuration
 
-SlurmDeck `0.1.0` uses strict schema-v1 YAML. Unknown keys are errors and
+SlurmDeck uses strict schema-v1 YAML. Named project targets are an additive
+schema-v1 feature, not a schema-version bump. Unknown keys are errors and
 validation identifies the file and field. Only schema version 1 is supported.
 
 ## User state
@@ -9,10 +10,14 @@ On Linux, user state normally lives below
 `$XDG_CONFIG_HOME/slurmdeck` (usually `~/.config/slurmdeck`):
 
 ```text
-state.yaml                         selected remote name and saved UI theme
+state.yaml                         selected remote, per-project targets, and UI theme
 remotes/<name>.yaml                Remote plus optional ClusterProfile
 cache/environments/<name>.yaml     advisory observation/registry cache
 ```
+
+The current target is workstation-local UI/CLI state keyed by `project_id`.
+It is not written into the project YAML, so collaborators may select different
+targets without changing a shared file.
 
 SlurmDeck creates its local state directories with mode `0700` and YAML,
 SQLite, WAL, and SHM files with mode `0600`. A mutating write or database open
@@ -124,9 +129,23 @@ slurmdeck doctor --remote hpc
 `profile set` validates before atomic replacement. `profile show` and Doctor
 are read-only; Doctor never generates, applies, or saves policy.
 
+In a named-target project, `slurmdeck doctor --target NAME` diagnoses that
+target's remote and reports whether environment intent is configured. It does
+not verify environment readiness; run `slurmdeck env plan --target NAME` and
+`slurmdeck env prepare --target NAME` for that. `slurmdeck doctor --remote
+NAME` is the deliberate exception to the target project's `--remote`
+restriction: it diagnoses that registered remote by itself and skips the
+project environment. This keeps remote/profile troubleshooting available
+without combining that remote with another target's resources or environment.
+
 ## Project — `.slurmdeck/project.yaml`
 
-`slurmdeck init` generates `project_id` and `display_name`:
+`slurmdeck init` generates `project_id` and `display_name`. Schema v1 accepts
+one of two mutually exclusive project layouts.
+
+### Legacy single-target layout
+
+The original top-level `remote`, `resources`, and `env` fields remain valid:
 
 ```yaml
 schema_version: 1
@@ -165,10 +184,128 @@ sync:
   allow_sensitive_files: []        # exact reviewed paths only; normally keep empty
 ```
 
-CLI resource options, including `--reservation`, overlay `resources` for one run. Environment build
-resources start from the project resources and apply only the fields present
-in `env.build_resources`; scheduler resources are attempt provenance and do
-not change environment identity.
+In this layout, an explicit `--remote` overrides the project remote for an
+operation. Without one, SlurmDeck uses the project remote and then the
+user-level current remote. This compatibility option changes only the remote;
+the top-level resources and environment remain the project's single set. Do
+not use this shallow override to switch between clusters with different
+scheduler or CUDA/ROCm requirements; convert the project to named targets
+instead.
+
+### Named multi-cluster targets
+
+Named targets keep every cluster-dependent setting in one atomic bundle:
+
+```yaml
+schema_version: 1
+project_id: 4d3c39c8-1f44-44ce-ae77-a1f295f2fdca
+display_name: my-project
+default_target: jade
+targets:
+  jade:
+    remote: jade
+    resources:
+      time: "12:00:00"
+      cpus: 8
+      mem: 64G
+      gres: gpu:1
+      partition: long
+      account: jade-beta
+      qos: standard
+      reservation: jade
+      max_parallel: 24
+    env:
+      type: existing
+      name: asterism-rocm
+      prefix: /data/jade-beta/user/envs/asterism-rocm
+      smoke_test: "python -c 'import torch; assert torch.version.hip'"
+  htc:
+    remote: htc
+    resources:
+      time: "12:00:00"
+      cpus: 8
+      mem: 64G
+      gres: gpu:1
+      partition: gpu
+      account: my-account
+      qos: normal
+      max_parallel: 24
+    env:
+      type: existing
+      name: asterism-cuda
+      prefix: /shared/user/envs/asterism-cuda
+      smoke_test: "python -c 'import torch; assert torch.cuda.is_available()'"
+sync:
+  include_untracked: false
+  ignore_file: .slurmdeckignore
+  extra_ignores: ["data/", "*.ckpt"]
+  allow_sensitive_files: []
+```
+
+Each target is a self-contained selection of `remote`, `resources`, and
+environment intent. `env` may be deliberately omitted when the run should use
+the batch job's default environment. Shared snapshot policy remains at the
+top-level `sync` block.
+
+When `targets` is non-empty:
+
+- `default_target` is required and must name an entry in `targets`;
+- top-level `remote`, configured `resources`, and `env` cannot be mixed with
+  the target mapping; and
+- `--remote` is rejected because changing the SSH destination alone would
+  separate it from the target's resources and environment.
+
+Target resolution is deterministic:
+
+1. An explicit `--target NAME` for the operation.
+2. The workstation-local current target for this `project_id`.
+3. The project's `default_target`.
+
+Use the target commands to inspect and change the local selection:
+
+```bash
+slurmdeck target list
+slurmdeck target show jade
+slurmdeck target use jade
+```
+
+`target use` changes local user state, not `.slurmdeck/project.yaml`. Project
+operations can select a target without changing that pointer:
+
+```bash
+slurmdeck doctor --target jade
+slurmdeck env plan --target jade
+slurmdeck env prepare --target jade
+slurmdeck submit --target htc -- python train.py
+```
+
+`--target` and `--remote` are mutually exclusive. `--target` requires a
+named-target project; `--remote` is retained for legacy single-target project
+operations. The sole named-target exception is `doctor --remote`, which is an
+explicit remote-only diagnostic and therefore skips target environment checks.
+
+CLI resource options, including `--reservation`, overlay the selected target's
+`resources` for one run. Environment build resources start from that target's
+resources and apply only the fields present in `env.build_resources`;
+scheduler resources are attempt provenance and do not change environment
+identity.
+
+### Local SQLite schema and upgrades
+
+Project YAML and run manifests remain schema version 1. The internal project
+SQLite database is schema version 2; version 2 adds the selected target name to
+each immutable run while keeping legacy runs with an empty target.
+
+Opening a schema-1 database with a normal project command such as
+`slurmdeck run list` upgrades it automatically. The v1-to-v2 migration takes a
+SQLite write lock, rechecks the version after acquiring the lock, and commits
+the new column and version together. It is safe when multiple SlurmDeck
+processes open the project concurrently and can finish a previously interrupted
+migration whose `target` column already exists. Doctor remains read-only: when
+it finds an older database it reports the command to run but does not migrate
+state itself. After migration, releases that only support database schema 1
+cannot open that project's database; make a backup before attempting a package
+downgrade.
 
 Snapshots always exclude `.git`, `.slurmdeck`, `pulled/`, caches, and common
 build artifacts. Ignore rules are directory-aware and top-down: excluding
@@ -185,6 +322,10 @@ accepted. This guard is intentionally narrow and does not replace a secret
 scanner.
 
 ## Environment specifications
+
+The examples below use the legacy top-level `env` form. In a named-target
+project, nest the same block below the applicable `targets.<name>`. Different
+targets may use different backends, specs, modules, or external prefixes.
 
 ### Managed conda
 
@@ -228,7 +369,7 @@ it. `env remove` unregisters an external environment only.
 
 ```text
 .slurmdeck/project.yaml
-.slurmdeck/slurmdeck.db                 SQLite schema v1, WAL for mutations
+.slurmdeck/slurmdeck.db                 SQLite schema v2, WAL for mutations
 .slurmdeck/runs/<run_id>/               committed materialized runs
 .slurmdeck/staging/runs/<run_id>/...    crash-recoverable temporary commits
 .slurmdeck/locks/run-materialization/   local run commit locks

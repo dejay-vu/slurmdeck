@@ -11,6 +11,7 @@ import pytest
 
 from slurmdeck.agent import protocol
 from slurmdeck.errors import UserError
+from slurmdeck.models.project import ProjectExecutionConfig
 from slurmdeck.models.resources import ResourceOverrides
 from slurmdeck.models.run import CommandTemplateSpec
 from slurmdeck.services import run_materialization
@@ -41,6 +42,7 @@ def test_commit_atomically_persists_files_rows_summary_and_marker(ctx, remote):
     paths = ctx.require_project().paths
     run_dir = paths.run_dir(plan.run_id)
     assert row.id == plan.run_id
+    assert row.target == ""
     assert row.state == "planned"
     assert row.summary.total == len(plan.tasks)
     assert row.summary.counts == {"PENDING": len(plan.tasks)}
@@ -58,6 +60,31 @@ def test_commit_atomically_persists_files_rows_summary_and_marker(ctx, remote):
     final_files = {path.relative_to(run_dir).as_posix() for path in run_dir.rglob("*") if path.is_file()}
     assert final_files == {*plan.rendered_files, ".committed.json"}
     assert not paths.run_staging_dir.exists()
+
+
+def test_commit_persists_the_selected_project_target(ctx, remote):
+    project = ctx.require_project().config
+    execution = ProjectExecutionConfig(
+        project_id=project.project_id,
+        display_name=project.display_name,
+        target="jade",
+        remote=remote.name,
+        resources=project.resources,
+        env=project.env,
+        sync=project.sync,
+    )
+    plan = RunPlanner(ctx).plan(
+        command=COMMAND,
+        overrides=ResourceOverrides(),
+        remote=remote,
+        project_config=execution,
+    )
+
+    row = RunMaterializer(ctx).commit(plan)
+
+    assert plan.manifest.target == "jade"
+    assert row.target == "jade"
+    assert RunRepo(ctx.db()).get(plan.run_id).target == "jade"
 
 
 def test_commit_keeps_a_stable_unlocked_materialization_lock(ctx, remote):

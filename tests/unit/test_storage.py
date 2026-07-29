@@ -12,7 +12,8 @@ from slurmdeck.models.remote import Remote
 from slurmdeck.models.resources import Resources
 from slurmdeck.models.run import CommandTemplateSpec, TaskSpec
 from slurmdeck.models.status import RunSummary, SchedulerObservation, SchedulerSource
-from slurmdeck.storage.db import connect
+from slurmdeck.storage import db as db_module
+from slurmdeck.storage.db import DB_SCHEMA_VERSION, connect
 from slurmdeck.storage.paths import ProjectPaths, RemoteLayout, UserPaths
 from slurmdeck.storage.repos import PlannedTaskRecord, RunRepo, TaskRepo
 from slurmdeck.storage.user_store import UserStore
@@ -119,6 +120,22 @@ class TestUserStore:
         assert store.ui_theme() is None
         assert store.current_remote_name() == "cluster"
 
+    def test_current_targets_are_isolated_by_project_and_preserve_other_state(self, user_paths):
+        store = UserStore(user_paths)
+        store.set_current_remote("cluster")
+
+        store.set_current_target("project-a", "jade")
+        store.set_current_target("project-b", "htc")
+
+        assert store.current_target_name("project-a") == "jade"
+        assert store.current_target_name("project-b") == "htc"
+        assert store.current_remote_name() == "cluster"
+
+        store.set_current_target("project-a", None)
+        assert store.current_target_name("project-a") is None
+        assert store.current_target_name("project-b") == "htc"
+        assert store.current_remote_name() == "cluster"
+
     def test_ui_theme_rejects_unsafe_values_and_ignores_corrupt_state(self, user_paths):
         store = UserStore(user_paths)
         with pytest.raises(UserError, match="Invalid UI theme"):
@@ -177,7 +194,7 @@ class TestDb:
 
     def test_migration_sets_user_version(self, tmp_path):
         db = connect(tmp_path / "x.db")
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 1
+        assert db.execute("PRAGMA user_version").fetchone()[0] == DB_SCHEMA_VERSION
 
     def test_fresh_schema_has_first_format_run_and_task_columns(self, tmp_path):
         db = connect(tmp_path / "x.db")
@@ -188,6 +205,7 @@ class TestDb:
         new_run_columns = {
             "project_id",
             "project_display_name",
+            "target",
             "env_generation_id",
             "env_prefix",
             "env_attempt_id",
@@ -224,6 +242,28 @@ class TestDb:
 
         _insert_run(db)
         assert db.execute("SELECT status_sources_json FROM runs WHERE id = 'r1'").fetchone()[0] == "[]"
+
+    def test_v1_database_migrates_runs_with_an_empty_target(self, tmp_path):
+        path = tmp_path / "x.db"
+        raw = sqlite3.connect(path)
+        raw.executescript(db_module._SCHEMA_V1)
+        raw.execute("PRAGMA user_version = 1")
+        raw.execute(
+            "INSERT INTO runs "
+            "(id, project_id, project_display_name, name, remote, created_at, state, "
+            "resources_json, command_json) "
+            "VALUES ('legacy', 'p1', 'project', 'run', 'cluster', '2026-01-01', "
+            "'planned', '{}', '{\"argv\":[\"x\"]}')"
+        )
+        raw.commit()
+        raw.close()
+
+        migrated = connect(path)
+
+        row = RunRepo(migrated).get("legacy")
+        assert row is not None
+        assert row.target == ""
+        assert migrated.execute("PRAGMA user_version").fetchone()[0] == DB_SCHEMA_VERSION
 
     def test_newer_schema_rejected(self, tmp_path):
         path = tmp_path / "x.db"

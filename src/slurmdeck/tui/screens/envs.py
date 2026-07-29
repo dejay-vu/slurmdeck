@@ -62,9 +62,18 @@ class EnvsScreen(DeckScreen):
 
     def _remote(self) -> Remote | None:
         try:
-            return self.ctx.resolve_remote()
+            if self.ctx.project is None:
+                return self.ctx.resolve_remote()
+            return self.ctx.resolve_project_target(self.deck.target_name or None).remote
         except UserError:
             return None
+
+    def project_target_changed(self) -> None:
+        """Drop remote-specific rows before loading the new target's registry."""
+        self._records = None
+        self.reload()
+        if self._remote() is not None:
+            self.action_refresh()
 
     def reload(self) -> None:
         table = self.query_one("#envs-table", KeyedTable)
@@ -98,15 +107,39 @@ class EnvsScreen(DeckScreen):
     # -- actions ---------------------------------------------------------------
 
     def action_refresh(self) -> None:
-        if self._remote() is None:
+        if self.ctx.project is None:
+            remote = self._remote()
+            if remote is None:
+                self.notify("No remote selected.", severity="warning")
+                return
+            self.controller.list_envs(lambda records: self._loaded((None, remote.name), records))
+            return
+        try:
+            selection = self.ctx.resolve_project_target(self.deck.target_name or None)
+        except UserError:
             self.notify("No remote selected.", severity="warning")
             return
-        self.controller.list_envs(self._loaded)
+        identity = (selection.name, selection.remote.name)
+        self.controller.list_envs(lambda records: self._loaded(identity, records))
 
-    def _loaded(self, records: list[EnvironmentView]) -> None:
+    def _loaded(self, identity: tuple[str | None, str], records: list[EnvironmentView]) -> None:
+        """Ignore an old remote read that completed after a target switch."""
+        current_identity: tuple[str | None, str]
+        try:
+            if self.ctx.project is None:
+                remote = self.ctx.resolve_remote()
+                current_identity = (None, remote.name)
+                current_profile = remote.cluster
+            else:
+                current = self.ctx.resolve_project_target(self.deck.target_name or None)
+                current_identity = (current.name, current.remote.name)
+                current_profile = current.remote.cluster
+        except UserError:
+            return
+        if identity != current_identity:
+            return
         self._records = records
-        remote = self._remote()
-        self.deck.afterok_eligible = afterok_is_available(remote.cluster if remote else None, records)
+        self.deck.afterok_eligible = afterok_is_available(current_profile, records)
         self.reload()
 
     def _selected(self) -> EnvironmentView | None:
@@ -184,13 +217,18 @@ class EnvsScreen(DeckScreen):
         )
 
     def action_rebuild_env(self) -> None:
-        if self.ctx.project is None or self.ctx.project.config.env is None:
+        if self.ctx.project is None:
             self.notify("Rebuilding needs a project environment configuration.", severity="warning")
             return
-        remote = self._remote()
-        if remote is None:
-            self.notify("No remote selected.", severity="warning")
+        try:
+            selection = self.ctx.resolve_project_target(self.deck.target_name or None)
+        except UserError as exc:
+            self.notify(str(exc), severity="warning")
             return
+        if selection.config.env is None:
+            self.notify("Rebuilding needs a project environment configuration.", severity="warning")
+            return
+        remote = selection.remote
         self.confirm(
             f"Build a new immutable environment generation on {remote.name}?",
             lambda: self.controller.prepare_env(rebuild=True, after=self.action_refresh),

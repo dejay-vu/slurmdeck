@@ -149,6 +149,7 @@ class RunsScreen(DeckScreen):
                 ("State", state_text(row.state)),
                 ("Tasks", summary_text(summary)),
                 ("Job", row.slurm_job_id or "-"),
+                ("Target", row.target or "-"),
                 ("Remote", row.remote),
                 ("Environment", row.env_id or "none"),
                 ("Resources", resources),
@@ -166,26 +167,34 @@ class RunsScreen(DeckScreen):
             self.notify("Creating a run needs a project (run `slurmdeck init` first).", severity="warning")
             return
         try:
-            remote = self.ctx.resolve_remote()
+            selection = self.ctx.resolve_project_target(self.deck.target_name or None)
         except UserError as exc:
             self.notify(str(exc), severity="warning")
             return
-        profile = remote.cluster
+        profile = selection.remote.cluster
         dependency_capable = (
-            self.ctx.project.config.env is not None
+            selection.config.env is not None
             and profile is not None
             and profile.slurm.afterok_dependency is True
             and profile.slurm.kill_invalid_dependency
             in {InvalidDependencyPolicy.PER_JOB, InvalidDependencyPolicy.SITE_WIDE}
         )
         if dependency_capable:
-            self.controller.list_envs(self._open_new_run_for_envs)
+            identity = (selection.name, selection.remote.name)
+            self.controller.list_envs(lambda records: self._open_new_run_for_envs(identity, records))
         else:
             self._open_new_run(False)
 
-    def _open_new_run_for_envs(self, records: list[EnvironmentView]) -> None:
-        profile = self.ctx.resolve_remote().cluster
-        self._open_new_run(afterok_is_available(profile, records))
+    def _open_new_run_for_envs(
+        self,
+        identity: tuple[str | None, str],
+        records: list[EnvironmentView],
+    ) -> None:
+        selection = self.ctx.resolve_project_target(self.deck.target_name or None)
+        if identity != (selection.name, selection.remote.name):
+            self.action_new_run()
+            return
+        self._open_new_run(afterok_is_available(selection.remote.cluster, records))
 
     def _open_new_run(self, afterok_eligible: bool) -> None:
         self.deck.afterok_eligible = afterok_eligible
@@ -195,10 +204,12 @@ class RunsScreen(DeckScreen):
                 self.controller.create_run(draft)
 
         project = self.ctx.require_project()
+        selection = self.ctx.resolve_project_target(self.deck.target_name or None)
         self.app.push_screen(
             NewRunModal(
+                target_name=selection.name,
                 afterok_eligible=afterok_eligible,
-                resources=project.config.resources,
+                resources=selection.config.resources,
                 project_root=project.paths.root,
             ),
             on_result,

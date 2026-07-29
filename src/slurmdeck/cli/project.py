@@ -10,6 +10,7 @@ import typer
 from slurmdeck.cli._deps import get_context, reset
 from slurmdeck.cli._output import activity, data_table, emit_json, set_json_output, styled_state, success
 from slurmdeck.errors import UserError
+from slurmdeck.models.common import validate_name
 from slurmdeck.models.project import ProjectConfig
 from slurmdeck.services.doctor import DoctorService
 from slurmdeck.storage.db import connect
@@ -27,6 +28,8 @@ def init_command(
             f"Project already initialized: {paths.config_path}",
             hint="Edit .slurmdeck/project.yaml to change project settings.",
         )
+    if remote is not None:
+        validate_name(remote, what="remote name")
     config = ProjectConfig(project_id=str(uuid.uuid4()), display_name=paths.root.name, remote=remote)
     dump_yaml_model(paths.config_path, config)
     connect(paths.db_path).close()
@@ -37,13 +40,18 @@ def init_command(
 
 def doctor_command(
     cli_context: typer.Context,
+    target: str | None = typer.Option(None, "--target", "-t", help="Check a named project target."),
     remote: str | None = typer.Option(None, "--remote", help="Check a specific remote."),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable output."),
 ) -> None:
     """Check local tools, the remote, Slurm availability, and project state."""
     set_json_output(json_output, cli_context)
     with activity("Running doctor") as report:
-        checks = DoctorService(get_context()).run(remote_name=remote, operation_sink=report)
+        checks = DoctorService(get_context()).run(
+            target_name=target,
+            remote_name=remote,
+            operation_sink=report,
+        )
     if json_output:
         emit_json(checks)
     else:

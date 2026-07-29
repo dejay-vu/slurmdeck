@@ -7,6 +7,27 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+### Added
+
+- Project-scoped named targets that atomically bind a remote, resources, and
+  environment while retaining schema-v1 legacy single-target configuration.
+- `target list`, `target show`, and `target use`, plus per-operation
+  `--target` selection for submission, environment workflows, and Doctor.
+
+### Changed
+
+- The local project SQLite database is schema version 2 and records each run's
+  selected target. Schema-1 databases migrate automatically under a write lock;
+  concurrent opens and an already-added `target` column are handled safely.
+  Releases limited to database schema 1 cannot reopen a migrated project.
+- Doctor remains read-only for old databases and now recommends the automatic
+  migration command instead of replacing project state. In legacy projects,
+  `doctor --remote` still checks the top-level environment; in target projects
+  it is an explicit remote-only diagnostic.
+- Retry preserves the source run's target, remote, resources, exact environment
+  binding, and activation script; legacy runs are not relabeled after a project
+  migrates to named targets.
+
 ## [0.2.0] - 2026-07-29
 
 ### Added

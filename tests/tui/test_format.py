@@ -10,7 +10,7 @@ from slurmdeck.models.status import RunSummary, TaskStatusView
 from slurmdeck.storage.repos import RunRow
 from slurmdeck.tui import format as fmt
 from slurmdeck.tui.filters import TaskFilter, run_matches, task_matches
-from slurmdeck.tui.screens.run_detail import _cells
+from slurmdeck.tui.screens.run_detail import _cells, _meta_text
 
 NOW = fmt.parse_utc("2026-07-03T12:00:00Z")
 assert NOW is not None
@@ -161,7 +161,15 @@ def test_run_search_matches_fields(sample_run_row):
     assert run_matches(sample_run_row)
     assert run_matches(sample_run_row, sample_run_row.id[:6].upper())
     assert run_matches(sample_run_row, sample_run_row.state)
+    assert run_matches(sample_run_row, "JADE")
     assert not run_matches(sample_run_row, "zzz-no-match")
+
+
+def test_run_detail_meta_displays_target(sample_run_row):
+    text = _meta_text(sample_run_row, RunSummary(), TaskFilter.ALL, "")
+
+    assert "target jade" in text.plain
+    assert "remote hpc" in text.plain
 
 
 @pytest.fixture()
@@ -172,6 +180,7 @@ def sample_run_row() -> RunRow:
         project_display_name="Research Project",
         name="demo",
         remote="hpc",
+        target="jade",
         created_at="2026-07-03T12:00:00Z",
         state="submitted",
         slurm_job_id="424242",

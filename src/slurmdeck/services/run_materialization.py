@@ -114,6 +114,7 @@ class RunMaterializer:
                 project_display_name=manifest.project_display_name,
                 name=manifest.name,
                 remote=manifest.remote,
+                target=manifest.target or "",
                 created_at=manifest.created_at,
                 state=RunState.PLANNED,
                 remote_root=manifest.remote_root,

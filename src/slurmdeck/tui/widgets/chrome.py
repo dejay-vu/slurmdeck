@@ -29,7 +29,7 @@ _DOTS = {
 
 
 class TopBar(Widget):
-    """One line: app name │ project │ remote + connection dot.
+    """One line: app name │ project │ target@remote + connection dot.
 
     Renders directly from app state instead of ``Static.update`` — updates
     issued while a mode's initial screen is still mounting paint blank on
@@ -41,6 +41,7 @@ class TopBar(Widget):
         return cast("SlurmDeckApp", self.app)
 
     def on_mount(self) -> None:
+        self.watch(self.deck, "target_name", self._state_changed, init=False)
         self.watch(self.deck, "remote_name", self._state_changed, init=False)
         self.watch(self.deck, "connection", self._state_changed, init=False)
 
@@ -56,7 +57,8 @@ class TopBar(Widget):
         text.append(f"{app.project_label} ")
         text.append("│ ", style="dim")
         if app.remote_name:
-            text.append(f"{app.remote_name} ")
+            identity = f"{app.target_name}@{app.remote_name}" if app.target_name else app.remote_name
+            text.append(f"{identity} ")
             text.append(dot, style=dot_style)
         else:
             text.append("no remote", style="dim")

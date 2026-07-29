@@ -9,7 +9,16 @@ import yaml
 from rich.text import Text
 
 from slurmdeck.cli._deps import get_context
-from slurmdeck.cli._output import activity, confirm_or_exit, data_table, emit_json, kv_panel, set_json_output, success
+from slurmdeck.cli._output import (
+    activity,
+    confirm_or_exit,
+    data_table,
+    emit_json,
+    kv_panel,
+    set_json_output,
+    success,
+    warn,
+)
 from slurmdeck.errors import UserError
 from slurmdeck.models.remote import HostKeyPolicy
 from slurmdeck.planning.commandline import shell_join
@@ -111,12 +120,36 @@ def use(
     name: str,
     json_output: bool = typer.Option(False, "--json", help="Machine-readable output."),
 ) -> None:
-    """Select the current remote."""
+    """Select the user-level current remote."""
     set_json_output(json_output, cli_context)
-    remote = RemoteService(get_context()).use(name)
+    ctx = get_context()
+    remote = RemoteService(ctx).use(name)
     if json_output:
         emit_json(remote)
         return
+
+    project = ctx.project
+    if project is not None and project.config.targets:
+        config = project.config
+        target_name = ctx.user_store.current_target_name(config.project_id)
+        if target_name not in config.targets:
+            target_name = config.default_target
+        assert target_name is not None
+        target_remote = config.targets[target_name].remote
+        success(f"Saved remote {remote.name} ({remote.destination}) as the user-level default.")
+        warn(
+            f"This project continues to use {target_name}@{target_remote}. Switch it with `slurmdeck target use NAME`."
+        )
+        return
+
+    if project is not None and project.config.remote is not None:
+        success(f"Saved remote {remote.name} ({remote.destination}) as the user-level default.")
+        warn(
+            f"This project remains pinned to remote {project.config.remote} by .slurmdeck/project.yaml; "
+            "the project pin overrides the user-level default."
+        )
+        return
+
     success(f"Using remote {remote.name} ({remote.destination}).")
 
 

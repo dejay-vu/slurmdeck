@@ -21,6 +21,8 @@ from slurmdeck.cli._output import (
 from slurmdeck.errors import UserError
 from slurmdeck.models.cluster import BuildExecutor
 from slurmdeck.models.env import EnvironmentPlanAction, EnvironmentStatus
+from slurmdeck.models.project import ProjectExecutionConfig
+from slurmdeck.models.remote import Remote
 from slurmdeck.services.env_cache import EnvironmentCache
 from slurmdeck.services.env_execution import EnvironmentPreparationService
 from slurmdeck.services.env_lifecycle import EnvironmentLifecycleService
@@ -29,17 +31,32 @@ from slurmdeck.services.env_planning import EnvironmentPlanner, EnvironmentPlann
 env_app = typer.Typer(no_args_is_help=True, help="Prepare and manage remote environments.")
 
 
-def _desired_env_id(remote_name: str | None) -> str | None:
+def _env_context(
+    target_name: str | None,
+    remote_name: str | None,
+) -> tuple[Remote, ProjectExecutionConfig | None]:
+    ctx = get_context()
+    if ctx.project is None:
+        if target_name is not None:
+            ctx.resolve_project_target(target_name, remote_name=remote_name)
+        return ctx.resolve_remote(remote_name), None
+    selection = ctx.resolve_project_target(target_name, remote_name=remote_name)
+    return selection.remote, selection.config
+
+
+def _desired_env_id(
+    project_config: ProjectExecutionConfig | None,
+    remote: Remote,
+) -> str | None:
     ctx = get_context()
     project = ctx.project
-    if project is None or project.config.env is None:
+    if project is None or project_config is None or project_config.env is None:
         return None
-    remote = ctx.resolve_remote(remote_name)
     try:
         return (
             EnvironmentPlanner()
             .plan(
-                project=project.config,
+                project=project_config,
                 project_dir=project.paths.root,
                 layout=ctx.layout(remote),
                 profile=remote.cluster,
@@ -57,6 +74,7 @@ def plan(
     cli_context: typer.Context,
     executor: BuildExecutor | None = typer.Option(None, "--executor", help="Requested managed build executor."),
     rebuild: bool = typer.Option(False, "--rebuild", help="Preview a new immutable generation."),
+    target_name: str | None = typer.Option(None, "--target", "-t", help="Named project target."),
     remote_name: str | None = typer.Option(None, "--remote", "-r", help="Remote to use (default: current)."),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable output."),
 ) -> None:
@@ -64,19 +82,20 @@ def plan(
     set_json_output(json_output, cli_context)
     ctx = get_context()
     project = ctx.require_project()
-    if project.config.env is None:
+    selection = ctx.resolve_project_target(target_name, remote_name=remote_name)
+    if selection.config.env is None:
         raise UserError(
             "This project has no environment configured.",
             hint="Add an `env:` section to .slurmdeck/project.yaml (type: conda or existing).",
         )
-    remote = ctx.resolve_remote(remote_name)
+    remote = selection.remote
     service = EnvironmentPlanningService()
     if json_output:
         resolved = service.plan(
             transport=ctx.transport(remote),
             remote=remote,
             layout=ctx.layout(remote),
-            project=project.config,
+            project=selection.config,
             project_dir=project.paths.root,
             requested_executor=executor,
             rebuild=rebuild,
@@ -88,7 +107,7 @@ def plan(
             transport=ctx.transport(remote),
             remote=remote,
             layout=ctx.layout(remote),
-            project=project.config,
+            project=selection.config,
             project_dir=project.paths.root,
             requested_executor=executor,
             rebuild=rebuild,
@@ -118,6 +137,7 @@ def prepare(
     executor: BuildExecutor | None = typer.Option(None, "--executor", help="Requested managed build executor."),
     no_wait: bool = typer.Option(False, "--no-wait", help="Start or attach and return immediately."),
     follow: bool = typer.Option(False, "--follow", help="Follow build logs until the attempt becomes terminal."),
+    target_name: str | None = typer.Option(None, "--target", "-t", help="Named project target."),
     remote_name: str | None = typer.Option(None, "--remote", "-r", help="Remote to use (default: current)."),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable output."),
 ) -> None:
@@ -129,12 +149,13 @@ def prepare(
         raise UserError("--no-wait and --follow cannot be used together.")
     ctx = get_context()
     project = ctx.require_project()
-    if project.config.env is None:
+    selection = ctx.resolve_project_target(target_name, remote_name=remote_name)
+    if selection.config.env is None:
         raise UserError(
             "This project has no environment configured.",
             hint="Add an `env:` section to .slurmdeck/project.yaml (type: conda or existing).",
         )
-    remote = ctx.resolve_remote(remote_name)
+    remote = selection.remote
     transport = ctx.transport(remote)
     layout = ctx.layout(remote)
     cache = EnvironmentCache(ctx.user_paths)
@@ -143,7 +164,7 @@ def prepare(
             transport=transport,
             remote=remote,
             layout=layout,
-            project=project.config,
+            project=selection.config,
             project_dir=project.paths.root,
             requested_executor=executor,
             rebuild=rebuild,
@@ -184,18 +205,19 @@ def prepare(
 @env_app.command("list")
 def list_(
     cli_context: typer.Context,
+    target_name: str | None = typer.Option(None, "--target", "-t", help="Named project target."),
     remote_name: str | None = typer.Option(None, "--remote", "-r", help="Remote to use (default: current)."),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable output."),
 ) -> None:
     """List registry-backed environments and dynamic run references."""
     set_json_output(json_output, cli_context)
     ctx = get_context()
-    remote = ctx.resolve_remote(remote_name)
+    remote, project_config = _env_context(target_name, remote_name)
     with activity("Listing environments"):
         views = EnvironmentLifecycleService().list(
             ctx.transport(remote),
             ctx.layout(remote),
-            desired_env_id=_desired_env_id(remote_name),
+            desired_env_id=_desired_env_id(project_config, remote),
         )
     EnvironmentCache(ctx.user_paths).remember_registry(remote, [view.record for view in views])
     if json_output:
@@ -223,18 +245,19 @@ def list_(
 def show(
     cli_context: typer.Context,
     env_id: str,
+    target_name: str | None = typer.Option(None, "--target", "-t", help="Named project target."),
     remote_name: str | None = typer.Option(None, "--remote", "-r", help="Remote to use (default: current)."),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable output."),
 ) -> None:
     """Show environment identity, provenance, attempts, generations, and references."""
     set_json_output(json_output, cli_context)
     ctx = get_context()
-    remote = ctx.resolve_remote(remote_name)
+    remote, project_config = _env_context(target_name, remote_name)
     view = EnvironmentLifecycleService().show(
         ctx.transport(remote),
         ctx.layout(remote),
         env_id,
-        desired_env_id=_desired_env_id(remote_name),
+        desired_env_id=_desired_env_id(project_config, remote),
     )
     EnvironmentCache(ctx.user_paths).remember_record(remote, view.record)
     if json_output:
@@ -275,13 +298,14 @@ def show(
 def status(
     cli_context: typer.Context,
     env_id: str,
+    target_name: str | None = typer.Option(None, "--target", "-t", help="Named project target."),
     remote_name: str | None = typer.Option(None, "--remote", "-r", help="Remote to use (default: current)."),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable output."),
 ) -> None:
     """Refresh and show one environment's effective lifecycle status."""
     set_json_output(json_output, cli_context)
     ctx = get_context()
-    remote = ctx.resolve_remote(remote_name)
+    remote, _project_config = _env_context(target_name, remote_name)
     view = EnvironmentLifecycleService().status(ctx.transport(remote), ctx.layout(remote), env_id)
     EnvironmentCache(ctx.user_paths).remember_record(remote, view.record)
     if json_output:
@@ -306,6 +330,7 @@ def logs(
     follow: bool = typer.Option(False, "--follow", help="Follow the selected stream."),
     stderr: bool = typer.Option(False, "--stderr", help="Select stderr."),
     stdout: bool = typer.Option(False, "--stdout", help="Select stdout."),
+    target_name: str | None = typer.Option(None, "--target", "-t", help="Named project target."),
     remote_name: str | None = typer.Option(None, "--remote", "-r", help="Remote to use (default: current)."),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable output."),
 ) -> None:
@@ -317,7 +342,7 @@ def logs(
         raise UserError("Choose only one of --stderr or --stdout.")
     selected = "stderr" if stderr else "stdout" if stdout else None
     ctx = get_context()
-    remote = ctx.resolve_remote(remote_name)
+    remote, _project_config = _env_context(target_name, remote_name)
     service = EnvironmentLifecycleService()
     if follow:
         followed = service.follow_logs(
@@ -348,15 +373,16 @@ def logs(
 def cancel(
     cli_context: typer.Context,
     env_id: str,
+    target_name: str | None = typer.Option(None, "--target", "-t", help="Named project target."),
     remote_name: str | None = typer.Option(None, "--remote", "-r", help="Remote to use (default: current)."),
     yes: bool = typer.Option(False, "--yes", "-y", help="Do not ask for confirmation."),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable output."),
 ) -> None:
     """Cancel only the active environment build attempt."""
     set_json_output(json_output, cli_context)
-    confirm_or_exit(f"Cancel active build for environment {env_id}", yes=yes)
     ctx = get_context()
-    remote = ctx.resolve_remote(remote_name)
+    remote, _project_config = _env_context(target_name, remote_name)
+    confirm_or_exit(f"Cancel active build for environment {env_id} on {remote.name}", yes=yes)
     record = EnvironmentLifecycleService().cancel(ctx.transport(remote), ctx.layout(remote), env_id)
     EnvironmentCache(ctx.user_paths).remember_record(remote, record)
     if json_output:
@@ -370,16 +396,17 @@ def remove(
     cli_context: typer.Context,
     env_id: str,
     force: bool = typer.Option(False, "--force", help="Remove even when remote run manifests reference it."),
+    target_name: str | None = typer.Option(None, "--target", "-t", help="Named project target."),
     remote_name: str | None = typer.Option(None, "--remote", "-r", help="Remote to use (default: current)."),
     yes: bool = typer.Option(False, "--yes", "-y", help="Do not ask for confirmation."),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable output."),
 ) -> None:
     """Unregister an external env or move managed generations to trash."""
     set_json_output(json_output, cli_context)
-    action = f"Force remove environment {env_id}" if force else f"Remove environment {env_id}"
-    confirm_or_exit(action, yes=yes)
     ctx = get_context()
-    remote = ctx.resolve_remote(remote_name)
+    remote, _project_config = _env_context(target_name, remote_name)
+    action = f"Force remove environment {env_id}" if force else f"Remove environment {env_id}"
+    confirm_or_exit(f"{action} on {remote.name}", yes=yes)
     result = EnvironmentLifecycleService().remove(
         ctx.transport(remote),
         ctx.layout(remote),
@@ -399,6 +426,7 @@ def remove(
 @env_app.command("gc")
 def gc(
     cli_context: typer.Context,
+    target_name: str | None = typer.Option(None, "--target", "-t", help="Named project target."),
     remote_name: str | None = typer.Option(None, "--remote", "-r", help="Remote to use (default: current)."),
     yes: bool = typer.Option(False, "--yes", "-y", help="Delete candidates instead of a dry run."),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable output."),
@@ -406,7 +434,7 @@ def gc(
     """Preview or delete safe environment garbage; dry-run by default."""
     set_json_output(json_output, cli_context)
     ctx = get_context()
-    remote = ctx.resolve_remote(remote_name)
+    remote, _project_config = _env_context(target_name, remote_name)
     report = EnvironmentLifecycleService().gc(ctx.transport(remote), ctx.layout(remote), delete=yes)
     if json_output:
         emit_json(report)

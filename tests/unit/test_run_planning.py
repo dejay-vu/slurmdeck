@@ -8,7 +8,9 @@ from pydantic import ValidationError
 
 from slurmdeck.agent import protocol
 from slurmdeck.errors import UserError
-from slurmdeck.models.resources import ResourceOverrides
+from slurmdeck.models.project import ProjectConfig, ProjectTarget
+from slurmdeck.models.remote import Remote
+from slurmdeck.models.resources import ResourceOverrides, Resources
 from slurmdeck.models.run import CommandTemplateSpec
 from slurmdeck.models.sweep import Sweep
 from slurmdeck.services.run_planning import RunPlan, RunPlanner
@@ -83,8 +85,85 @@ def test_planner_is_pure_and_renders_the_complete_run_payload(ctx, remote):
     assert b"#SBATCH --array=0-1" in plan.rendered_files[protocol.SBATCH_FILE]
     assert b"--time=00:30:00" in plan.rendered_files[protocol.SBATCH_FILE]
     assert b"#SBATCH --reservation=research" in plan.rendered_files[protocol.SBATCH_FILE]
-    assert json.loads(plan.rendered_files[protocol.RUN_MANIFEST_FILE]) == plan.manifest.model_dump(mode="json")
+    assert json.loads(plan.rendered_files[protocol.RUN_MANIFEST_FILE]) == plan.manifest.model_dump(
+        mode="json",
+        exclude_none=True,
+    )
+    assert "target" not in json.loads(plan.rendered_files[protocol.RUN_MANIFEST_FILE])
     _assert_no_run_state(ctx)
+
+
+def test_planner_materializes_each_target_with_its_own_resources(ctx, remote, remote_root):
+    project = ctx.require_project()
+    jade_remote = Remote(
+        name="jade",
+        host="user@jade.example.com",
+        base=str(remote_root / "jade"),
+        resolved_base=str(remote_root / "jade"),
+    )
+    project.config = ProjectConfig(
+        project_id=project.config.project_id,
+        display_name=project.config.display_name,
+        default_target="jade",
+        targets={
+            "jade": ProjectTarget(
+                remote="jade",
+                resources=Resources(
+                    account="jade-beta",
+                    qos="standard",
+                    reservation="jade",
+                    gres="gpu:1",
+                ),
+            ),
+            "htc": ProjectTarget(
+                remote=remote.name,
+                resources=Resources(
+                    account="oerc-grn",
+                    constraint="gpu_sku:H100",
+                    gres="gpu:1",
+                ),
+            ),
+        },
+    )
+
+    jade = RunPlanner(ctx).plan(
+        command=CommandTemplateSpec(argv=["python", "train.py"]),
+        name="jade-run",
+        remote=jade_remote,
+        project_config=project.config.execution("jade"),
+    )
+    htc = RunPlanner(ctx).plan(
+        command=CommandTemplateSpec(argv=["python", "train.py"]),
+        name="htc-run",
+        remote=remote,
+        project_config=project.config.execution("htc"),
+    )
+
+    assert (jade.manifest.target, jade.manifest.remote) == ("jade", "jade")
+    assert jade.manifest.resources.reservation == "jade"
+    assert b"#SBATCH --reservation=jade" in jade.rendered_files[protocol.SBATCH_FILE]
+    assert (htc.manifest.target, htc.manifest.remote) == ("htc", remote.name)
+    assert htc.manifest.resources.account == "oerc-grn"
+    assert htc.manifest.resources.reservation is None
+    assert b"--reservation" not in htc.rendered_files[protocol.SBATCH_FILE]
+    assert b"#SBATCH --constraint=gpu_sku:H100" in htc.rendered_files[protocol.SBATCH_FILE]
+
+
+def test_planner_rejects_a_target_config_from_another_remote(ctx, remote):
+    project = ctx.require_project()
+    project.config = ProjectConfig(
+        project_id=project.config.project_id,
+        display_name=project.config.display_name,
+        default_target="jade",
+        targets={"jade": ProjectTarget(remote="jade")},
+    )
+
+    with pytest.raises(UserError, match=r"selects remote 'jade'.*received 'cluster'"):
+        RunPlanner(ctx).plan(
+            command=CommandTemplateSpec(argv=["python", "train.py"]),
+            remote=remote,
+            project_config=project.config.execution("jade"),
+        )
 
 
 @pytest.mark.parametrize(

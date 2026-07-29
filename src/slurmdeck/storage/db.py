@@ -8,7 +8,7 @@ from pathlib import Path
 from slurmdeck.errors import SchemaVersionError
 from slurmdeck.storage.permissions import ensure_private_directory, ensure_private_file, restrict_file_if_present
 
-DB_SCHEMA_VERSION = 1
+DB_SCHEMA_VERSION = 2
 
 _SCHEMA_V1 = """
 CREATE TABLE runs (
@@ -79,6 +79,10 @@ CREATE TABLE tasks (
 CREATE INDEX tasks_by_state ON tasks(run_id, artifact_state, scheduler_state);
 """
 
+_SCHEMA_V2 = """
+ALTER TABLE runs ADD COLUMN target TEXT NOT NULL DEFAULT '';
+"""
+
 
 def connect(path: Path) -> sqlite3.Connection:
     """Open (creating/migrating if needed) the project database."""
@@ -88,8 +92,8 @@ def connect(path: Path) -> sqlite3.Connection:
     # journaling plus short transactions keeps cross-thread use safe.
     connection = sqlite3.connect(path, timeout=5.0, check_same_thread=False)
     connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA journal_mode = WAL")
     connection.execute("PRAGMA busy_timeout = 5000")
+    connection.execute("PRAGMA journal_mode = WAL")
     connection.execute("PRAGMA foreign_keys = ON")
     _migrate(connection)
     for suffix in ("", "-wal", "-shm", "-journal"):
@@ -98,12 +102,51 @@ def connect(path: Path) -> sqlite3.Connection:
 
 
 def _migrate(connection: sqlite3.Connection) -> None:
-    version = int(connection.execute("PRAGMA user_version").fetchone()[0])
+    version = _schema_version(connection)
     if version == DB_SCHEMA_VERSION:
         return
     if version > DB_SCHEMA_VERSION:
         raise SchemaVersionError("project database", version, DB_SCHEMA_VERSION)
-    with connection:
+
+    # Serialize migration across the per-thread connections used by the TUI.
+    # The first version read is only a fast path: another process may finish
+    # the migration while this connection waits for the write lock.
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        version = _schema_version(connection)
+        if version > DB_SCHEMA_VERSION:
+            raise SchemaVersionError("project database", version, DB_SCHEMA_VERSION)
         if version < 1:
-            connection.executescript(_SCHEMA_V1)
+            _execute_schema(connection, _SCHEMA_V1)
+        # A process can be killed after an older non-transactional ALTER but
+        # before advancing user_version.  Treat the column as the durable fact
+        # and finish that migration instead of repeating it.
+        if version < 2 and "target" not in _table_columns(connection, "runs"):
+            connection.execute(_SCHEMA_V2)
         connection.execute(f"PRAGMA user_version = {DB_SCHEMA_VERSION}")
+    except BaseException:
+        connection.rollback()
+        raise
+    else:
+        connection.commit()
+
+
+def _schema_version(connection: sqlite3.Connection) -> int:
+    return int(connection.execute("PRAGMA user_version").fetchone()[0])
+
+
+def _table_columns(connection: sqlite3.Connection, table: str) -> set[str]:
+    return {str(row[1]) for row in connection.execute(f"PRAGMA table_info({table})")}
+
+
+def _execute_schema(connection: sqlite3.Connection, script: str) -> None:
+    """Execute a schema script without sqlite3.executescript's implicit commit."""
+    pending: list[str] = []
+    for line in script.splitlines(keepends=True):
+        pending.append(line)
+        statement = "".join(pending)
+        if sqlite3.complete_statement(statement):
+            connection.execute(statement)
+            pending.clear()
+    if "".join(pending).strip():
+        raise sqlite3.OperationalError("incomplete schema statement")

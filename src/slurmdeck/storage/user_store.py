@@ -81,6 +81,34 @@ class UserStore:
             state["current_remote"] = name
         self._write_state(state)
 
+    # -- project target pointers ---------------------------------------------
+
+    def current_target_name(self, project_id: str) -> str | None:
+        targets = self._read_state().get("current_targets")
+        if not isinstance(targets, dict):
+            return None
+        name = targets.get(project_id)
+        if not isinstance(name, str):
+            return None
+        try:
+            return validate_name(name, what="target name")
+        except UserError:
+            return None
+
+    def set_current_target(self, project_id: str, name: str | None) -> None:
+        state = self._read_state()
+        raw_targets = state.get("current_targets")
+        targets = dict(raw_targets) if isinstance(raw_targets, dict) else {}
+        if name is None:
+            targets.pop(project_id, None)
+        else:
+            targets[project_id] = validate_name(name, what="target name")
+        if targets:
+            state["current_targets"] = dict(sorted(targets.items()))
+        else:
+            state.pop("current_targets", None)
+        self._write_state(state)
+
     # -- presentation preferences ---------------------------------------------
 
     def ui_theme(self) -> str | None:

@@ -2,7 +2,9 @@
 
 `slurmdeck ui` opens the Textual interface over the same services, status
 views, operation events, recovery rules, and semantic Rich theme as the CLI.
-CLI and TUI may be used interchangeably.
+CLI and TUI may be used interchangeably. In a named-target project, the TUI
+resolves the complete remote/resources/environment bundle from the
+workstation-local current target, falling back to `default_target`.
 
 ```bash
 cd my-project                       # optional; otherwise opens Remotes
@@ -38,6 +40,29 @@ detail views.
 The footer shows only the highest-priority action for the current screen;
 secondary actions remain available through keys and help. This keeps 80-column
 screens stable instead of dropping fields to make room for every shortcut.
+
+## Project targets
+
+For a project with `default_target` and `targets` in
+`.slurmdeck/project.yaml`, select the current target before opening the TUI:
+
+```bash
+slurmdeck target list
+slurmdeck target show jade
+slurmdeck target use jade
+slurmdeck ui
+```
+
+The selection is saved locally for this project's `project_id`; it does not
+edit the shared project config. Inside the TUI, press `:` and choose
+**Switch project target** to change the same saved selection; the top bar shows
+the effective `target@remote`. The TUI does not independently mix a selected
+Remote with another target's resources or environment. New runs, project
+environment actions use the same resolved target. A running TUI pins its
+displayed target for that session, so a `target use` from another shell cannot
+silently change an open form; use the in-app picker or reopen the TUI. For a
+one-off CLI operation without changing the saved selection, use the CLI's
+explicit `--target NAME` option.
 
 ## Global keys
 
@@ -75,6 +100,12 @@ and a “Submit immediately” choice. It does not introduce a second RunPlan YA
 schema. `afterok` appears only for an active Slurm environment build whose
 effective profile guarantees invalid-dependency termination.
 
+The form overlays its resource fields on the current target's resources and
+binds the run to that target's remote and environment as one selection.
+Retry is deliberately different: it preserves the source run's target,
+remote, resources, environment binding, and activation script. A legacy run
+therefore remains legacy after the project is converted to named targets.
+
 Run detail uses `l` for selected task logs and `f` to cycle all/active/failed.
 Task log keys are `f` follow, `tab` stdout/stderr, `w` wrap, and `r` reload.
 
@@ -98,8 +129,10 @@ The list marks the environment desired by the current project. Detail shows
 backend/ownership, full hash, status, scheduler job/reason, resources,
 generation/prefix, attempt, stdout/stderr, references, and last error.
 
-Prepare and rebuild always use `.slurmdeck/project.yaml` plus the selected
-Remote's ClusterProfile. Active attempts attach rather than submit duplicates.
+Prepare and rebuild always use the resolved project target plus that target
+Remote's ClusterProfile. In a legacy project they use the top-level project
+environment and selected Remote instead. Active attempts attach rather than
+submit duplicates.
 Managed removal is blocked by run references; external removal never deletes
 the user prefix. GC previews count/bytes first and excludes directories outside
 the schema-v1 layout.
@@ -118,14 +151,23 @@ Environment logs use the same follow/stream/wrap/reload keys as task logs.
 
 Add Remote explicitly chooses a direct `user@login` destination or an SSH
 config alias, plus the remote base and whether to select it immediately.
+Selecting a Remote with `u` updates the user-level current remote used by
+legacy projects and commands outside a named-target project. It does not
+override a named target; use **Switch project target** in the command palette
+for the current session, or run `slurmdeck target use NAME` and reopen the TUI.
 
 The Profile form covers executor/login policy, shared filesystem, module
 initialization, conda/modules, network/channels/mirrors, Slurm defaults,
 afterok/invalid-dependency policy, and platform. It can import a strict YAML
 file, preview the complete diff, and only writes after “Save profile”.
 
-Doctor is a separate read-only diagnosis. It has no Apply or Save action and
-never mutates Remote YAML, cache, project/database files, or remote paths.
+Doctor is a separate read-only diagnosis. From the Remotes screen it checks
+the selected remote by itself and skips project target environment intent; use
+`slurmdeck doctor --target NAME` for target-scoped configuration diagnosis.
+Doctor only reports that environment intent exists; use `slurmdeck env plan`
+and `slurmdeck env prepare` to check readiness. Doctor has no Apply or Save
+action and never mutates Remote YAML, cache, project/database files, or remote
+paths.
 
 ## Feedback, concurrency, and stale state
 

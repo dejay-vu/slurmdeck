@@ -20,7 +20,7 @@ from slurmdeck.models.env import (
     EnvWaitPolicy,
     ExistingEnvSpec,
 )
-from slurmdeck.models.project import ProjectConfig
+from slurmdeck.models.project import ProjectExecutionConfig
 from slurmdeck.models.remote import Remote
 from slurmdeck.services.env_cache import EnvironmentCache
 from slurmdeck.services.env_planning import EnvironmentPlanningService
@@ -59,7 +59,7 @@ class EnvironmentRunBindingService:
         transport: Transport,
         remote: Remote,
         layout: RemoteLayout,
-        project: ProjectConfig,
+        project: ProjectExecutionConfig,
         project_dir: Path,
         wait_policy: EnvWaitPolicy = EnvWaitPolicy.READY,
     ) -> EnvBinding | None:

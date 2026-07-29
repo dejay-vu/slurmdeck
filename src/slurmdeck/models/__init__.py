@@ -12,7 +12,7 @@ from slurmdeck.models.env import (
     EnvWaitPolicy,
     ExistingEnvSpec,
 )
-from slurmdeck.models.project import ProjectConfig, SyncConfig
+from slurmdeck.models.project import ProjectConfig, ProjectExecutionConfig, ProjectTarget, SyncConfig
 from slurmdeck.models.remote import Remote
 from slurmdeck.models.resources import ResourceOverrides, Resources
 from slurmdeck.models.run import RUN_SCHEMA_VERSION, CommandTemplateSpec, RunManifest, TaskSpec
@@ -56,6 +56,8 @@ __all__ = [
     "OperationSink",
     "OperationStatus",
     "ProjectConfig",
+    "ProjectExecutionConfig",
+    "ProjectTarget",
     "Remote",
     "ResourceOverrides",
     "Resources",

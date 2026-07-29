@@ -83,6 +83,7 @@ class RunRow:
     status_sources_json: str
     scan_watermark: float
     summary: RunSummary
+    target: str = ""
 
     @property
     def env_binding(self) -> EnvBinding | None:
@@ -131,6 +132,7 @@ def _run_row(row: sqlite3.Row) -> RunRow:
         status_sources_json=row["status_sources_json"],
         scan_watermark=row["scan_watermark"],
         summary=RunSummary.model_validate(json.loads(row["summary_json"] or "{}")),
+        target=row["target"],
     )
 
 
@@ -155,6 +157,7 @@ class RunRepo:
         command: CommandTemplateSpec,
         sweep_file: str | None,
         retry_of: str | None,
+        target: str = "",
         env_generation_id: str = "",
         env_prefix: str = "",
         env_attempt_id: str = "",
@@ -176,13 +179,13 @@ class RunRepo:
         def execute() -> None:
             self._db.execute(
                 """
-                INSERT INTO runs (id, project_id, project_display_name, name, remote, created_at, state,
+                INSERT INTO runs (id, project_id, project_display_name, name, remote, target, created_at, state,
                                   remote_root, snapshot_hash, env_id, env_generation_id, env_prefix, env_attempt_id,
                                   env_build_job_id, env_wait_policy, env_dependency_state, env_dependency_reason,
                                   resources_json, command_json, sweep_file, retry_of, submission_token,
                                   submission_phase, submission_error_json, status_refresh_failed_at,
                                   status_refresh_error_json, status_sources_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_id,
@@ -190,6 +193,7 @@ class RunRepo:
                     project_display_name,
                     name,
                     remote,
+                    target,
                     created_at,
                     state,
                     remote_root,

@@ -33,7 +33,7 @@ def task_matches(row: TaskStatusView, task_filter: TaskFilter, needle: str = "")
 
 
 def run_matches(row: RunRow, needle: str = "") -> bool:
-    return _contains(needle, row.id, row.name, row.state, row.slurm_job_id, row.remote)
+    return _contains(needle, row.id, row.name, row.state, row.slurm_job_id, row.target or "", row.remote)
 
 
 def _contains(needle: str, *haystacks: str) -> bool:

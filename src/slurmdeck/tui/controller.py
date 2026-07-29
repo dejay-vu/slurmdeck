@@ -19,7 +19,7 @@ from slurmdeck.models.env import EnvironmentRecord, EnvironmentView
 from slurmdeck.models.remote import Remote
 from slurmdeck.models.sweep import Sweep
 from slurmdeck.operations import OperationEvent, OperationPhase, OperationReporter, OperationSink
-from slurmdeck.services.context import AppContext
+from slurmdeck.services.context import AppContext, ProjectTargetSelection
 from slurmdeck.services.doctor import Check, DoctorService
 from slurmdeck.services.env_binding import EnvironmentRunBindingService
 from slurmdeck.services.env_cache import EnvironmentCache
@@ -92,6 +92,16 @@ class DeckController:
     @property
     def ctx(self) -> AppContext:
         return self._ctx
+
+    def _selected_project_target(self) -> ProjectTargetSelection:
+        """Resolve the target pinned by this TUI session, not mutable external state."""
+        name = getattr(self._app, "target_name", "")
+        return self._ctx.resolve_project_target(name or None)
+
+    def _environment_remote(self) -> Remote:
+        if self._ctx.project is None:
+            return self._ctx.resolve_remote()
+        return self._selected_project_target().remote
 
     def transport_for(self, remote: Remote) -> Transport:
         transport = self._transports.get(remote.name)
@@ -264,7 +274,8 @@ class DeckController:
         def task(operation_sink: OperationSink) -> RunRow:
             ctx = self._ctx
             project = ctx.require_project()
-            remote = ctx.resolve_remote()
+            selection = ctx.resolve_project_target(draft.target_name)
+            remote = selection.remote
             transport = self.transport_for(remote)
             sweep = (
                 load_yaml_model(
@@ -279,7 +290,7 @@ class DeckController:
                 transport=transport,
                 remote=remote,
                 layout=ctx.layout(remote),
-                project=project.config,
+                project=selection.config,
                 project_dir=project.paths.root,
                 wait_policy=draft.env_wait,
             )
@@ -292,6 +303,7 @@ class DeckController:
                 overrides=draft.overrides,
                 remote=remote,
                 env_binding=env_binding,
+                project_config=selection.config,
                 operation_sink=operation_sink,
             )
             if draft.submit:
@@ -414,20 +426,21 @@ class DeckController:
         def task(_operation_sink: OperationSink) -> EnvironmentRecord:
             ctx = self._ctx
             project = ctx.require_project()
-            spec = project.config.env
+            selection = self._selected_project_target()
+            spec = selection.config.env
             if spec is None:
                 raise UserError(
                     "No environment configured for this project.",
                     hint="Add an `env:` section to .slurmdeck/project.yaml first.",
                 )
-            remote = ctx.resolve_remote()
+            remote = selection.remote
             return (
                 EnvironmentPreparationService(cache=EnvironmentCache(ctx.user_paths))
                 .prepare(
                     transport=self.transport_for(remote),
                     remote=remote,
                     layout=ctx.layout(remote),
-                    project=project.config,
+                    project=selection.config,
                     project_dir=project.paths.root,
                     rebuild=rebuild,
                     wait=False,
@@ -447,15 +460,20 @@ class DeckController:
     def list_envs(self, on_result: Callable[[list[EnvironmentView]], None]) -> None:
         def task(_operation_sink: OperationSink) -> list[EnvironmentView]:
             ctx = self._ctx
-            remote = ctx.resolve_remote()
-            desired_env_id = None
             project = ctx.project
-            if project is not None and project.config.env is not None:
+            if project is None:
+                selection = None
+                remote = ctx.resolve_remote()
+            else:
+                selection = self._selected_project_target()
+                remote = selection.remote
+            desired_env_id = None
+            if project is not None and selection is not None and selection.config.env is not None:
                 with suppress(UserError):
                     desired_env_id = (
                         EnvironmentPlanner()
                         .plan(
-                            project=project.config,
+                            project=selection.config,
                             project_dir=project.paths.root,
                             layout=ctx.layout(remote),
                             profile=remote.cluster,
@@ -484,7 +502,7 @@ class DeckController:
     def remove_env(self, env_id: str, *, after: Callable[[], None] | None = None) -> None:
         def task(_operation_sink: OperationSink) -> None:
             ctx = self._ctx
-            remote = ctx.resolve_remote()
+            remote = self._environment_remote()
             result = EnvironmentLifecycleService().remove(self.transport_for(remote), ctx.layout(remote), env_id)
             EnvironmentCache(ctx.user_paths).remember_record(remote, result.record)
 
@@ -500,7 +518,7 @@ class DeckController:
     def cancel_env(self, env_id: str, *, after: Callable[[], None] | None = None) -> None:
         def task(_operation_sink: OperationSink) -> EnvironmentRecord:
             ctx = self._ctx
-            remote = ctx.resolve_remote()
+            remote = self._environment_remote()
             record = EnvironmentLifecycleService().cancel(self.transport_for(remote), ctx.layout(remote), env_id)
             EnvironmentCache(ctx.user_paths).remember_record(remote, record)
             return record
@@ -517,7 +535,7 @@ class DeckController:
     def gc_envs(self, *, delete: bool, on_result: Callable[[EnvironmentGcReport], None]) -> None:
         def task(_operation_sink: OperationSink) -> EnvironmentGcReport:
             ctx = self._ctx
-            remote = ctx.resolve_remote()
+            remote = self._environment_remote()
             return EnvironmentLifecycleService().gc(
                 self.transport_for(remote),
                 ctx.layout(remote),
@@ -625,7 +643,7 @@ class DeckController:
         def body() -> None:
             try:
                 ctx = self._ctx
-                remote = ctx.resolve_remote()
+                remote = self._environment_remote()
                 log = EnvironmentLifecycleService().logs(
                     self.transport_for(remote),
                     ctx.layout(remote),
@@ -642,7 +660,7 @@ class DeckController:
 
     def follow_env_log(self, env_id: str, *, stream: str | None, on_line: Callable[[str], None]) -> EnvironmentLog:
         ctx = self._ctx
-        remote = ctx.resolve_remote()
+        remote = self._environment_remote()
         return EnvironmentLifecycleService().follow_logs(
             self.transport_for(remote),
             ctx.layout(remote),

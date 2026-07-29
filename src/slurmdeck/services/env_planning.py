@@ -29,7 +29,7 @@ from slurmdeck.models.env import (
     EnvOwnership,
     ExistingEnvSpec,
 )
-from slurmdeck.models.project import ProjectConfig
+from slurmdeck.models.project import ProjectExecutionConfig
 from slurmdeck.models.remote import Remote
 from slurmdeck.models.resources import Resources
 from slurmdeck.services.cluster import ClusterCapabilityService
@@ -57,7 +57,7 @@ class EnvironmentPlanner:
     def plan(
         self,
         *,
-        project: ProjectConfig,
+        project: ProjectExecutionConfig,
         project_dir: Path,
         layout: RemoteLayout,
         profile: ClusterProfile | None,
@@ -97,7 +97,7 @@ class EnvironmentPlanner:
         self,
         *,
         spec: CondaEnvSpec,
-        project: ProjectConfig,
+        project: ProjectExecutionConfig,
         project_dir: Path,
         layout: RemoteLayout,
         profile: ClusterProfile | None,
@@ -264,11 +264,12 @@ class EnvironmentPlanningService:
         transport: Transport,
         remote: Remote,
         layout: RemoteLayout,
-        project: ProjectConfig,
+        project: ProjectExecutionConfig,
         project_dir: Path,
         requested_executor: BuildExecutor | None = None,
         rebuild: bool = False,
     ) -> EnvironmentPlan:
+        _require_matching_remote(project, remote)
         observation = self._capabilities.observe(transport, remote)
         registry = self._registry.inspect(transport, layout)
         return self._resolved_plan(
@@ -288,7 +289,7 @@ class EnvironmentPlanningService:
         transport: Transport,
         remote: Remote,
         layout: RemoteLayout,
-        project: ProjectConfig,
+        project: ProjectExecutionConfig,
         project_dir: Path,
         requested_executor: BuildExecutor | None = None,
         rebuild: bool = False,
@@ -300,6 +301,7 @@ class EnvironmentPlanningService:
         observation, while the remote prepare/candidate helper remains the
         authority for registry state.
         """
+        _require_matching_remote(project, remote)
         if self._cache is None:
             return self.plan(
                 transport=transport,
@@ -332,7 +334,7 @@ class EnvironmentPlanningService:
         registry: Sequence[EnvironmentRecord],
         remote: Remote,
         layout: RemoteLayout,
-        project: ProjectConfig,
+        project: ProjectExecutionConfig,
         project_dir: Path,
         requested_executor: BuildExecutor | None,
         rebuild: bool,
@@ -347,6 +349,16 @@ class EnvironmentPlanningService:
             requested_executor=requested_executor,
             rebuild=rebuild,
         )
+
+
+def _require_matching_remote(project: ProjectExecutionConfig, remote: Remote) -> None:
+    if project.remote is None or project.remote == remote.name:
+        return
+    label = f"Target {project.target!r}" if project.target is not None else "Project configuration"
+    raise UserError(
+        f"{label} selects remote {project.remote!r}, but environment planning received {remote.name!r}.",
+        hint="Resolve the project target once and pass its remote and execution config together.",
+    )
 
 
 def _environment_file(project_dir: Path, configured_path: str) -> tuple[Path, bytes]:

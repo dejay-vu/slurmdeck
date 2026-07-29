@@ -21,6 +21,8 @@ from slurmdeck.models.env import (
     EnvOwnership,
     ExistingEnvSpec,
 )
+from slurmdeck.models.project import ProjectConfig, ProjectTarget
+from slurmdeck.models.remote import Remote
 from slurmdeck.models.resources import ResourceOverrides, Resources
 from slurmdeck.models.run import CommandTemplateSpec
 from slurmdeck.models.sweep import Sweep
@@ -43,6 +45,7 @@ from slurmdeck.tui.screens import (
     RunsScreen,
 )
 from slurmdeck.tui.widgets import ConfirmModal, EmptyState, ErrorPanel, KeyedTable
+from slurmdeck.tui.widgets.chrome import TopBar
 from slurmdeck.tui.widgets.forms import NewRunModal, ProfileModal, RemoteFormModal
 
 SWEEP = Sweep.model_validate({"version": 1, "parameters": {"seed": [0, 1]}})
@@ -74,6 +77,41 @@ async def _wait_for(condition, *, timeout: float = 5.0) -> None:
             return
         await asyncio.sleep(0.05)
     raise AssertionError("condition not met in time")
+
+
+def _configure_named_targets(ctx: AppContext, remote_root: Path, *, with_jade_env: bool = False) -> None:
+    assert ctx.project is not None
+    ctx.user_store.add_remote(
+        Remote(
+            name="jade",
+            host="jade@login.example.com",
+            base=str(remote_root),
+            resolved_base=str(remote_root),
+        )
+    )
+    ctx.project.config = ProjectConfig(
+        project_id=ctx.project.config.project_id,
+        display_name=ctx.project.config.display_name,
+        default_target="jade",
+        targets={
+            "jade": ProjectTarget(
+                remote="jade",
+                resources=Resources(
+                    time="00:45:00",
+                    cpus=8,
+                    mem="32G",
+                    gres="gpu:1",
+                    account="jade-beta",
+                    reservation="jade",
+                ),
+                env=ExistingEnvSpec(prefix="/shared/jade-rocm") if with_jade_env else None,
+            ),
+            "htc": ProjectTarget(
+                remote="cluster",
+                resources=Resources(time="00:20:00", cpus=4, mem="16G", gres="gpu:1"),
+            ),
+        },
+    )
 
 
 class TestRunsScreen:
@@ -239,6 +277,119 @@ class TestRunsScreen:
             row = RunService(ctx).list_runs()[0]
             assert row.summary.total == 2
             assert row.resources.cpus == 4
+
+    async def test_named_target_drives_identity_run_remote_and_resource_defaults(self, ctx, remote_root):
+        _configure_named_targets(ctx, remote_root)
+        app = SlurmDeckApp(ctx)
+
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert app.target_name == "jade"
+            assert app.remote_name == "jade"
+            assert "jade@jade" in app.screen.query_one(TopBar).render().plain
+
+            await pilot.press("n")
+            await pilot.pause()
+            assert isinstance(app.screen, NewRunModal)
+            assert app.screen.target_name == "jade"
+            assert app.screen.query_one("#run-time", Input).value == "00:45:00"
+            assert app.screen.query_one("#run-cpus", Input).value == "8"
+            assert app.screen.query_one("#run-account", Input).value == "jade-beta"
+            assert app.screen.query_one("#run-reservation", Input).value == "jade"
+            app.screen.query_one("#run-command", Input).value = "python3 train.py"
+            app.screen.query_one("#run-submit", Checkbox).value = False
+            await pilot.click("#run-save")
+            await _wait_for(lambda: len(RunService(ctx).list_runs()) == 1)
+
+            row = RunService(ctx).list_runs()[0]
+            assert row.target == "jade"
+            assert row.remote == "jade"
+            assert row.resources.cpus == 8
+            assert row.resources.reservation == "jade"
+
+    async def test_open_new_run_keeps_session_target_when_external_state_changes(self, ctx, remote_root):
+        _configure_named_targets(ctx, remote_root)
+        assert ctx.project is not None
+        app = SlurmDeckApp(ctx)
+
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert app.target_name == "jade"
+            await pilot.press("n")
+            await pilot.pause()
+            assert isinstance(app.screen, NewRunModal)
+            assert app.screen.target_name == "jade"
+            assert app.screen.query_one("#run-cpus", Input).value == "8"
+
+            # Simulate `slurmdeck target use htc` in another process while
+            # this form is open. The TUI session and its draft stay on jade.
+            ctx.user_store.set_current_target(ctx.project.config.project_id, "htc")
+            app.screen.query_one("#run-command", Input).value = "python3 train.py"
+            app.screen.query_one("#run-submit", Checkbox).value = False
+            await pilot.click("#run-save")
+            await _wait_for(lambda: len(RunService(ctx).list_runs()) == 1)
+            await _wait_for(lambda: app.controller.operation is None)
+
+            row = RunService(ctx).list_runs()[0]
+            assert ctx.user_store.current_target_name(ctx.project.config.project_id) == "htc"
+            assert app.target_name == "jade"
+            assert app.remote_name == "jade"
+            assert row.target == "jade"
+            assert row.remote == "jade"
+            assert row.resources.cpus == 8
+            assert row.resources.reservation == "jade"
+
+    async def test_target_picker_persists_and_updates_top_bar(self, ctx, remote_root, monkeypatch):
+        _configure_named_targets(ctx, remote_root)
+        app = SlurmDeckApp(ctx)
+        captured = []
+
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            monkeypatch.setattr(
+                app,
+                "search_commands",
+                lambda commands, placeholder: captured.extend(commands),
+            )
+            app.action_change_target()
+            htc = next(command for command in captured if command[0].startswith("htc @ cluster"))
+            htc[1]()
+            await pilot.pause()
+
+            assert ctx.user_store.current_target_name(ctx.project.config.project_id) == "htc"
+            assert app.target_name == "htc"
+            assert app.remote_name == "cluster"
+            assert "htc@cluster" in app.screen.query_one(TopBar).render().plain
+
+        reopened = SlurmDeckApp(ctx)
+        async with reopened.run_test() as pilot:
+            await pilot.pause()
+            assert reopened.target_name == "htc"
+            assert reopened.remote_name == "cluster"
+
+    async def test_target_picker_opens_when_current_target_remote_was_removed(self, ctx, remote_root, monkeypatch):
+        _configure_named_targets(ctx, remote_root)
+        ctx.user_store.remove_remote("jade")
+        app = SlurmDeckApp(ctx)
+        captured = []
+
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert app.target_name == "jade"
+            assert app.remote_name == ""
+            monkeypatch.setattr(
+                app,
+                "search_commands",
+                lambda commands, placeholder: captured.extend(commands),
+            )
+            app.action_change_target()
+            htc = next(command for command in captured if command[0].startswith("htc @ cluster"))
+            htc[1]()
+            await pilot.pause()
+
+            assert ctx.user_store.current_target_name(ctx.project.config.project_id) == "htc"
+            assert app.target_name == "htc"
+            assert app.remote_name == "cluster"
 
     async def test_lists_runs_and_counts(self, ctx, submitted_run):
         app = SlurmDeckApp(ctx)
@@ -463,6 +614,25 @@ class TestLogs:
 
 
 class TestEnvs:
+    async def test_rebuild_guard_uses_selected_target_environment(self, ctx, remote_root):
+        _configure_named_targets(ctx, remote_root, with_jade_env=True)
+        ctx.user_store.set_current_target(ctx.project.config.project_id, "htc")
+        app = SlurmDeckApp(ctx)
+
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("2")
+            await _wait_for(lambda: isinstance(app.screen, EnvsScreen))
+            await pilot.press("b")
+            await pilot.pause()
+            assert not isinstance(app.screen, ConfirmModal)
+
+            app.select_target("jade")
+            await pilot.pause()
+            await pilot.press("b")
+            await pilot.pause()
+            assert isinstance(app.screen, ConfirmModal)
+
     async def test_attach_and_rebuild_route_to_prepare_semantics(self, ctx, monkeypatch):
         assert ctx.project is not None
         ctx.project.config = ctx.project.config.model_copy(update={"env": ExistingEnvSpec(prefix="/shared/existing")})
@@ -661,6 +831,33 @@ class TestOutsideProject:
             empty = app.screen.query_one("#runs-empty", EmptyState)
             assert empty.display is True
 
+    async def test_environments_keep_using_default_remote_outside_project(
+        self,
+        user_paths,
+        remote,
+        fake_transport,
+        tmp_path,
+    ):
+        ctx = AppContext.create(
+            cwd=tmp_path / "not-a-project",
+            user_paths=user_paths,
+            transport_factory=lambda _remote: fake_transport,
+        )
+        app = SlurmDeckApp(ctx)
+
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("2")
+            await _wait_for(lambda: isinstance(app.screen, EnvsScreen))
+            screen = app.screen
+            assert isinstance(screen, EnvsScreen)
+            await _wait_for(lambda: screen._records is not None)
+
+            assert screen._remote() == remote
+            assert screen._records == []
+            assert app.remote_name == "cluster"
+            assert app.target_name == ""
+
     async def test_no_remotes_guidance(self, tmp_path):
         from slurmdeck.storage.paths import UserPaths
 
@@ -695,6 +892,39 @@ class TestOutsideProject:
             assert remote.ssh_alias == "example-cluster"
             assert remote.host is None
             assert remote.host_key_policy == "strict"
+
+
+class TestNamedTargetRemotes:
+    async def test_use_remote_explains_that_named_project_target_is_unchanged(
+        self,
+        ctx,
+        remote_root,
+        monkeypatch,
+    ):
+        _configure_named_targets(ctx, remote_root)
+        assert ctx.project is not None
+        ctx.user_store.set_current_target(ctx.project.config.project_id, "htc")
+        app = SlurmDeckApp(ctx)
+        messages: list[str] = []
+
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("3")
+            await pilot.pause()
+            assert isinstance(app.screen, RemotesScreen)
+            monkeypatch.setattr(
+                app.screen,
+                "notify",
+                lambda message, *args, **kwargs: messages.append(str(message)),
+            )
+            app.screen._use("jade")
+
+            assert ctx.user_store.current_remote_name() == "jade"
+            assert ctx.resolve_project_target().name == "htc"
+            assert app.target_name == "htc"
+            assert app.remote_name == "cluster"
+            assert any("remains on htc@cluster" in message for message in messages)
+            assert any("Switch project target" in message for message in messages)
 
 
 class TestProfileWorkflow:

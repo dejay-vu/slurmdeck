@@ -183,18 +183,90 @@ The basic flow above uses the batch job's default remote environment. Managed
 or existing environments are configured explicitly in `.slurmdeck/project.yaml`
 as described in [Environments](#environments).
 
+### Use one project on multiple clusters
+
+Schema v1 also supports named project targets. A target keeps the remote,
+resources, and environment together, so switching from (for example) a ROCm
+cluster to a CUDA cluster cannot accidentally reuse the other cluster's
+account, reservation, or environment prefix:
+
+```yaml
+schema_version: 1
+project_id: 4d3c39c8-1f44-44ce-ae77-a1f295f2fdca
+display_name: my-project
+default_target: jade
+targets:
+  jade:
+    remote: jade
+    resources:
+      time: "12:00:00"
+      cpus: 8
+      mem: 64G
+      gres: gpu:1
+      partition: long
+      account: jade-beta
+      qos: standard
+      reservation: jade
+      max_parallel: 24
+    env:
+      type: existing
+      name: rocm
+      prefix: /shared/envs/my-project-rocm
+  htc:
+    remote: htc
+    resources:
+      time: "12:00:00"
+      cpus: 8
+      mem: 64G
+      gres: gpu:1
+      partition: gpu
+      account: my-account
+      max_parallel: 24
+    env:
+      type: existing
+      name: cuda
+      prefix: /shared/envs/my-project-cuda
+```
+
+Inspect or change the workstation-local current target, or select one for a
+single operation:
+
+```bash
+slurmdeck target list
+slurmdeck target show jade
+slurmdeck target use jade
+slurmdeck doctor --target jade
+slurmdeck env prepare --target jade
+slurmdeck submit --target htc -- python train.py
+```
+
+Resolution order is an explicit `--target`, then this project's locally saved
+current target, then `default_target`. `target use` does not edit the shared
+project YAML. The older top-level `remote`/`resources`/`env` layout remains
+supported; `--remote` is retained only for those legacy single-target
+projects and cannot be combined with named targets. The one diagnostic
+exception is `slurmdeck doctor --remote NAME`: it checks that registered remote
+by itself and deliberately skips target resources and environment. Use
+`doctor --target NAME` to diagnose that target's remote and configured
+environment intent. Doctor does not verify environment readiness; use
+`env plan --target NAME` and `env prepare --target NAME` for that.
+
 ## Core concepts
 
 - **Remote** — an SSH destination and a remote base directory. An optional
   **ClusterProfile** records user-supplied site policy: permitted environment
   executors, login-node policy, shared-filesystem guarantees, modules, conda,
   network/channel access, Slurm defaults/dependency behavior, and platform.
+- **Target** — a project-scoped, named bundle of one remote, its resources,
+  and its environment intent. The selected target is resolved atomically for
+  Doctor, environment operations, and submission.
 - **Project** — a local directory initialized with `slurmdeck init`. The
   generated config has a UUID `project_id`, a `display_name`, resource/env
   intent, and sync rules. Run/task state is stored locally in SQLite.
 - **Run** — one immutable materialized run. Planning is validated in memory,
   then committed atomically to the local run directory and database. A retry
-  creates a new run and preserves the original resources and task templates.
+  creates a new run and preserves the source target, remote, resources,
+  environment binding/activation, and task templates.
 - **Snapshot** — the content hash of the exact selected code files. Snapshots
   upload once, are reference-derived from manifests/receipts, and are garbage
   collected only by an explicit, lock-protected command.
@@ -223,6 +295,10 @@ env:
     time: "01:00:00"
     mem: 8G
 ```
+
+This top-level form is the legacy single-target layout. In a named-target
+project, put the complete `env` block inside each applicable target alongside
+that target's `remote` and `resources`.
 
 Managed environment builds also require an explicit ClusterProfile describing
 site policy and capabilities. Adapt the complete
@@ -303,12 +379,19 @@ braces are `{{` and `}}`. Unknown placeholders fail before materialization.
 slurmdeck init | doctor | ui | --version
 slurmdeck remote add|list|use|remove|connect|disconnect|status|exec
 slurmdeck remote profile show|set
+slurmdeck target list|show|use
 slurmdeck env plan|prepare|list|show|status|logs|cancel|remove|gc
 slurmdeck snapshot preview|list|gc
 slurmdeck sweep validate|preview
-slurmdeck submit [--plan-only] [--env-wait ready|afterok] [resources...] -- CMD...
+slurmdeck submit [--target NAME] [--plan-only] [--env-wait ready|afterok] [resources...] -- CMD...
 slurmdeck run list|show|submit|reconcile|status|logs|cancel|retry|pull|clean
 ```
+
+Project-aware `doctor`, `env`, and `submit` commands accept `--target NAME`.
+The `--remote` option remains available for legacy single-target project
+configs. `doctor --remote NAME` additionally remains available as a
+remote-only diagnostic in named-target projects; it does not select or combine
+a project target.
 
 Machine-readable commands emit exactly one JSON document:
 
@@ -362,7 +445,10 @@ environment prepare/attach/log/cancel/rebuild/remove/GC, responsive
 master-detail screens, persistent dismissible errors, stale status, elapsed
 operations, and shared dark/light/mono styling. At 80 columns, Enter opens a
 dedicated detail page; at 100 columns and above, lists and details share the
-screen. See the [TUI documentation](https://github.com/dejay-vu/slurmdeck/blob/main/docs/tui.md).
+screen. For named-target projects, it uses the project's locally selected
+target (or `default_target`). Switch inside the TUI from the command palette,
+or run `slurmdeck target use NAME` before opening/reopening it. See the
+[TUI documentation](https://github.com/dejay-vu/slurmdeck/blob/main/docs/tui.md).
 
 ## Documentation
 

@@ -46,6 +46,9 @@ def submit_command(
     shell: str | None = typer.Option(
         None, "--shell", help="Run this string through bash instead of a direct argv command."
     ),
+    target_name: str | None = typer.Option(
+        None, "--target", "-t", help="Named project target (remote + resources + environment)."
+    ),
     remote_name: str | None = typer.Option(None, "--remote", "-r", help="Remote to use (default: current)."),
     time: str | None = typer.Option(None, "--time", help="Slurm time limit override."),
     cpus: int | None = typer.Option(None, "--cpus", help="CPUs per task override."),
@@ -93,14 +96,15 @@ def submit_command(
     )
 
     ctx = get_context()
-    remote = ctx.resolve_remote(remote_name)
+    selection = ctx.resolve_project_target(target_name, remote_name=remote_name)
+    remote = selection.remote
     transport = ctx.transport(remote)
     project = ctx.require_project()
     env_binding = EnvironmentRunBindingService(cache=EnvironmentCache(ctx.user_paths)).resolve(
         transport=transport,
         remote=remote,
         layout=ctx.layout(remote),
-        project=project.config,
+        project=selection.config,
         project_dir=project.paths.root,
         wait_policy=env_wait,
     )
@@ -114,6 +118,7 @@ def submit_command(
             overrides=overrides,
             remote=remote,
             env_binding=env_binding,
+            project_config=selection.config,
             operation_sink=report,
         )
         if not plan_only:
@@ -134,6 +139,7 @@ def submit_command(
             ("Tasks", StatusService(ctx).summary(row.id).total),
             ("Slurm job", row.slurm_job_id or "-"),
             ("Remote", f"{row.remote}:{row.remote_root}"),
+            ("Target", row.target or "legacy"),
         ],
     )
     if plan_only:

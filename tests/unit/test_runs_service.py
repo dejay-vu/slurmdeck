@@ -7,7 +7,9 @@ from pathlib import Path
 import pytest
 
 from slurmdeck.errors import UserError
-from slurmdeck.models.resources import ResourceOverrides
+from slurmdeck.models.env import EnvBinding, ExistingEnvSpec
+from slurmdeck.models.project import ProjectConfig, ProjectTarget
+from slurmdeck.models.resources import ResourceOverrides, Resources
 from slurmdeck.models.run import CommandTemplateSpec
 from slurmdeck.models.sweep import Sweep
 from slurmdeck.operations import OperationPhase
@@ -235,6 +237,127 @@ def test_retry_reuses_resources_and_repoints_paths(ctx, remote, fake_transport):
     config_arg = tasks[0]["argv"][3]
     assert f"/runs/{retry_row.id}/" in config_arg  # {config} re-resolved against the NEW run root
     assert f"/runs/{row.id}/" not in config_arg
+
+
+def test_retry_of_legacy_run_stays_legacy_after_project_migrates_to_targets(ctx, remote):
+    runs = RunService(ctx)
+    source = _plan(ctx, remote)
+    project = ctx.require_project()
+    project.config = ProjectConfig(
+        project_id=project.config.project_id,
+        display_name=project.config.display_name,
+        default_target="htc",
+        targets={
+            "htc": ProjectTarget(
+                remote=remote.name,
+                resources=Resources(account="new-default"),
+            )
+        },
+    )
+
+    retry = runs.retry(source.id, task_ids=["001"])
+
+    assert source.target == ""
+    assert retry.target == ""
+    assert retry.remote == source.remote
+    assert retry.resources == source.resources
+    assert retry.retry_of == source.id
+
+
+def test_retry_of_legacy_run_does_not_guess_between_targets_on_the_same_remote(ctx, remote):
+    runs = RunService(ctx)
+    source = _plan(ctx, remote)
+    project = ctx.require_project()
+    project.config = ProjectConfig(
+        project_id=project.config.project_id,
+        display_name=project.config.display_name,
+        default_target="first",
+        targets={
+            "first": ProjectTarget(remote=remote.name),
+            "second": ProjectTarget(remote=remote.name),
+        },
+    )
+
+    retry = runs.retry(source.id, task_ids=["001"])
+    assert retry.target == ""
+    assert retry.remote == source.remote
+
+
+def test_retry_uses_recorded_target_remote_and_activation_after_config_changes(ctx, remote):
+    runs = RunService(ctx)
+    project = ctx.require_project()
+    project.config = ProjectConfig(
+        project_id=project.config.project_id,
+        display_name=project.config.display_name,
+        default_target="htc",
+        targets={"htc": ProjectTarget(remote=remote.name)},
+    )
+    source = _plan(
+        ctx,
+        remote,
+        project_config=ctx.resolve_project_target("htc").config,
+    )
+    project.config = ProjectConfig(
+        project_id=project.config.project_id,
+        display_name=project.config.display_name,
+        default_target="htc",
+        targets={"htc": ProjectTarget(remote="moved")},
+    )
+
+    retry = runs.retry(source.id, task_ids=["001"])
+
+    assert retry.target == "htc"
+    assert retry.remote == "cluster"
+    source_activation = ctx.require_project().paths.run_dir(source.id) / "activation.sh"
+    retry_activation = ctx.require_project().paths.run_dir(retry.id) / "activation.sh"
+    assert retry_activation.read_bytes() == source_activation.read_bytes()
+
+
+def test_retry_preserves_nonempty_source_activation_when_target_env_changes(ctx, remote):
+    runs = RunService(ctx)
+    project = ctx.require_project()
+    project.config = ProjectConfig(
+        project_id=project.config.project_id,
+        display_name=project.config.display_name,
+        default_target="htc",
+        targets={
+            "htc": ProjectTarget(
+                remote=remote.name,
+                env=ExistingEnvSpec(prefix="/shared/original", modules=["cuda/12"]),
+            )
+        },
+    )
+    binding = EnvBinding(
+        env_id="original-123456789abc",
+        generation_id="",
+        prefix="/shared/original",
+        attempt_id="",
+        build_job_id="",
+    )
+    source = _plan(
+        ctx,
+        remote,
+        project_config=ctx.resolve_project_target("htc").config,
+        env_binding=binding,
+    )
+    source_activation = (project.paths.run_dir(source.id) / "activation.sh").read_bytes()
+    assert b"/shared/original" in source_activation
+    project.config = ProjectConfig(
+        project_id=project.config.project_id,
+        display_name=project.config.display_name,
+        default_target="htc",
+        targets={
+            "htc": ProjectTarget(
+                remote=remote.name,
+                env=ExistingEnvSpec(prefix="/shared/reconfigured", modules=["rocm/7"]),
+            )
+        },
+    )
+
+    retry = runs.retry(source.id, task_ids=["001"])
+
+    assert retry.env_prefix == "/shared/original"
+    assert (project.paths.run_dir(retry.id) / "activation.sh").read_bytes() == source_activation
 
 
 def test_retry_without_failures_errors(ctx, remote, fake_transport):

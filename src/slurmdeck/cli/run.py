@@ -63,9 +63,16 @@ def list_(
         return
     data_table(
         "Runs",
-        ["RUN", "STATE", "TASKS", "SLURM JOB", "CREATED"],
+        ["RUN", "TARGET", "STATE", "TASKS", "SLURM JOB", "CREATED"],
         [
-            [row.id, styled_state(row.state), row.summary.format_counts(), row.slurm_job_id or "-", row.created_at]
+            [
+                row.id,
+                row.target or row.remote,
+                styled_state(row.state),
+                row.summary.format_counts(),
+                row.slurm_job_id or "-",
+                row.created_at,
+            ]
             for row in rows
         ],
     )
@@ -90,6 +97,7 @@ def show(
         [
             ("State", styled_state(row.state)),
             ("Created", row.created_at),
+            ("Target", row.target or "legacy"),
             ("Remote", f"{row.remote}:{row.remote_root}"),
             ("Slurm job", row.slurm_job_id or "-"),
             ("Command", command),

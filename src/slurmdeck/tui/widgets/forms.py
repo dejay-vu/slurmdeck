@@ -343,8 +343,16 @@ class ProfileModal(ModalScreen[ProfileDraft | None]):
 class NewRunModal(ModalScreen[NewRunDraft | None]):
     BINDINGS: ClassVar = [Binding("escape", "cancel", "Cancel", show=False)]
 
-    def __init__(self, *, afterok_eligible: bool, resources: Resources, project_root: Path) -> None:
+    def __init__(
+        self,
+        *,
+        afterok_eligible: bool,
+        resources: Resources,
+        project_root: Path,
+        target_name: str | None = None,
+    ) -> None:
         super().__init__()
+        self.target_name = target_name
         self.afterok_eligible = afterok_eligible
         self.resources = resources
         self.project_root = project_root
@@ -434,6 +442,7 @@ class NewRunModal(ModalScreen[NewRunDraft | None]):
             return
         self.dismiss(
             NewRunDraft(
+                target_name=self.target_name,
                 command=command,
                 sweep_file=sweep_file,
                 name=_optional(self.query_one("#run-name", Input).value),

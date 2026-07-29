@@ -48,14 +48,24 @@ class DeckCommandProvider(Provider):
 
     def _commands(self) -> tuple[tuple[str, str, Callable[[], None]], ...]:
         deck = self.deck
-        return (
+        commands: list[tuple[str, str, Callable[[], None]]] = [
             ("Go to runs", "Dashboard of all runs in this project", partial(deck.action_go, "runs")),
             ("Go to environments", "Environments prepared on the remote", partial(deck.action_go, "envs")),
             ("Go to remotes", "Configured remotes and doctor checks", partial(deck.action_go, "remotes")),
             ("Refresh status now", "Query the scheduler and task artifacts", deck.controller.refresh_now),
             ("Toggle auto-refresh", "Pause or resume the background status refresh", deck.action_toggle_auto),
             ("Help", "Keyboard reference and workflow overview", deck.action_help),
-        )
+        ]
+        if deck.ctx.project is not None and deck.ctx.project.config.targets:
+            commands.insert(
+                3,
+                (
+                    "Switch project target",
+                    "Atomically select a target's remote, resources, and environment",
+                    deck.action_change_target,
+                ),
+            )
+        return tuple(commands)
 
     async def discover(self) -> Hits:
         for name, help_text, callback in self._commands():
@@ -97,6 +107,7 @@ class SlurmDeckApp(App[None]):
     operation_started_at: reactive[float | None] = reactive(None)
     operation_elapsed: reactive[float] = reactive(0.0)
     counts_text: reactive[str] = reactive("")
+    target_name: reactive[str] = reactive("")
     remote_name: reactive[str] = reactive("")
     auto_refresh_enabled: reactive[bool] = reactive(True)
     status_stale: reactive[bool] = reactive(False)
@@ -132,7 +143,17 @@ class SlurmDeckApp(App[None]):
 
     def update_identity(self) -> None:
         try:
-            self.remote_name = self.ctx.resolve_remote().name
+            if self.ctx.project is None:
+                self.target_name = ""
+                self.remote_name = self.ctx.resolve_remote().name
+                return
+            config = self.ctx.project.config
+            if config.targets and not self.target_name:
+                saved = self.ctx.user_store.current_target_name(config.project_id)
+                self.target_name = saved if saved in config.targets else config.default_target or ""
+            selection = self.ctx.resolve_project_target(self.target_name or None)
+            self.target_name = selection.name or ""
+            self.remote_name = selection.remote.name
         except UserError:
             self.remote_name = ""
 
@@ -171,6 +192,56 @@ class SlurmDeckApp(App[None]):
             ],
             placeholder="Select a theme…",
         )
+
+    def action_change_target(self) -> None:
+        """Offer the project's named execution targets."""
+        if self.controller.operation is not None:
+            self.notify(f"{self.controller.operation} is still running.", severity="warning")
+            return
+        project = self.ctx.project
+        if project is None or not project.config.targets:
+            self.notify("This project has no named targets.", severity="warning")
+            return
+        current = self.target_name or project.config.default_target
+        self.search_commands(
+            [
+                (
+                    f"{name} @ {target.remote}{' (current)' if name == current else ''}",
+                    partial(self.select_target, name),
+                    "Select this target's remote, resources, and environment",
+                )
+                for name, target in sorted(project.config.targets.items())
+            ],
+            placeholder="Select a project target…",
+        )
+
+    def select_target(self, name: str) -> None:
+        """Validate, persist, and immediately reflect a project target."""
+        if self.controller.operation is not None:
+            self.notify(f"{self.controller.operation} is still running.", severity="warning")
+            return
+        project = self.ctx.require_project()
+        try:
+            selection = self.ctx.resolve_project_target(name)
+        except UserError as exc:
+            self.notify(str(exc), severity="error")
+            return
+        assert selection.name is not None
+        try:
+            self.ctx.user_store.set_current_target(project.config.project_id, selection.name)
+        except OSError as exc:
+            message = f"Could not save target preference: {exc}"
+            self._record_error("Target was not changed", message)
+            self.notify(message, title="Target was not changed", severity="error", timeout=8)
+            return
+        self.target_name = selection.name
+        self.update_identity()
+        for screen in self.screen_stack:
+            if isinstance(screen, EnvsScreen):
+                screen.project_target_changed()
+            elif isinstance(screen, DeckScreen):
+                screen.reload()
+        self.notify(f"Project target changed to {selection.name}@{selection.remote.name}.")
 
     def select_theme(self, name: str) -> None:
         """Apply and persist a theme selected interactively."""

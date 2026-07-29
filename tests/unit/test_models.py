@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from slurmdeck.errors import SchemaVersionError, UserError
 from slurmdeck.models.common import safe_name, validate_name
 from slurmdeck.models.env import CondaEnvSpec, EnvBinding, EnvWaitPolicy, ExistingEnvSpec
-from slurmdeck.models.project import ProjectConfig
+from slurmdeck.models.project import ProjectConfig, ProjectTarget
 from slurmdeck.models.remote import HostKeyPolicy, Remote
 from slurmdeck.models.resources import ResourceOverrides, Resources
 from slurmdeck.models.run import CommandTemplateSpec, RunManifest
@@ -99,6 +99,119 @@ class TestProjectConfig:
     def test_unknown_key_rejected(self):
         with pytest.raises(ValidationError):
             ProjectConfig.model_validate({**PROJECT_IDENTITY, "resource": {}})
+
+    def test_named_targets_resolve_resources_environment_and_remote_atomically(self):
+        config = ProjectConfig(
+            **PROJECT_IDENTITY,
+            default_target="jade",
+            targets={
+                "jade": ProjectTarget(
+                    remote="jade",
+                    resources=Resources(account="jade-beta", reservation="jade"),
+                    env=ExistingEnvSpec(name="rocm", prefix="/jade/rocm"),
+                ),
+                "htc": ProjectTarget(
+                    remote="htc",
+                    resources=Resources(account="oerc-grn", constraint="gpu_sku:H100"),
+                    env=ExistingEnvSpec(name="cuda", prefix="/htc/cuda"),
+                ),
+            },
+        )
+
+        jade = config.execution()
+        htc = config.execution("htc")
+
+        assert (jade.target, jade.remote, jade.resources.reservation) == ("jade", "jade", "jade")
+        assert isinstance(jade.env, ExistingEnvSpec)
+        assert jade.env.prefix == "/jade/rocm"
+        assert (htc.target, htc.remote, htc.resources.account) == ("htc", "htc", "oerc-grn")
+        assert htc.resources.reservation is None
+        assert isinstance(htc.env, ExistingEnvSpec)
+        assert htc.env.prefix == "/htc/cuda"
+
+    def test_named_targets_require_a_valid_default_and_reject_legacy_mix(self):
+        target = {"jade": {"remote": "jade"}}
+
+        with pytest.raises(ValidationError, match="default_target is required"):
+            ProjectConfig.model_validate({**PROJECT_IDENTITY, "targets": target})
+        with pytest.raises(ValidationError, match="not present in targets"):
+            ProjectConfig.model_validate({**PROJECT_IDENTITY, "default_target": "missing", "targets": target})
+        with pytest.raises(ValidationError, match="top-level remote"):
+            ProjectConfig.model_validate(
+                {
+                    **PROJECT_IDENTITY,
+                    "remote": "jade",
+                    "default_target": "jade",
+                    "targets": target,
+                }
+            )
+        with pytest.raises(ValidationError, match="top-level env"):
+            ProjectConfig.model_validate(
+                {
+                    **PROJECT_IDENTITY,
+                    "env": {"type": "existing", "prefix": "/env"},
+                    "default_target": "jade",
+                    "targets": target,
+                }
+            )
+        with pytest.raises(ValidationError, match="top-level resources"):
+            ProjectConfig.model_validate(
+                {
+                    **PROJECT_IDENTITY,
+                    "resources": {"account": "legacy"},
+                    "default_target": "jade",
+                    "targets": target,
+                }
+            )
+        with pytest.raises(ValidationError, match="top-level resources"):
+            ProjectConfig.model_validate(
+                {
+                    **PROJECT_IDENTITY,
+                    "resources": {},
+                    "default_target": "jade",
+                    "targets": target,
+                }
+            )
+
+    def test_project_serialization_emits_only_the_active_layout(self):
+        legacy = ProjectConfig(**PROJECT_IDENTITY, remote="cluster")
+        targeted = ProjectConfig(
+            **PROJECT_IDENTITY,
+            default_target="jade",
+            targets={"jade": ProjectTarget(remote="jade")},
+        )
+
+        legacy_payload = legacy.model_dump(mode="json", exclude_none=True)
+        targeted_payload = targeted.model_dump(mode="json", exclude_none=True)
+
+        assert "default_target" not in legacy_payload
+        assert "targets" not in legacy_payload
+        assert {"remote", "resources", "env"}.isdisjoint(targeted_payload)
+        assert ProjectConfig.model_validate(legacy_payload) == legacy
+        assert ProjectConfig.model_validate(targeted_payload) == targeted
+
+    def test_explicit_empty_target_is_not_treated_as_the_default(self):
+        config = ProjectConfig(
+            **PROJECT_IDENTITY,
+            default_target="jade",
+            targets={"jade": ProjectTarget(remote="jade")},
+        )
+
+        with pytest.raises(ValueError, match="unknown project target"):
+            config.execution("")
+
+    def test_legacy_execution_keeps_remote_override_compatibility(self):
+        config = ProjectConfig(
+            **PROJECT_IDENTITY,
+            remote="default",
+            resources=Resources(account="legacy"),
+        )
+
+        resolved = config.execution(remote="explicit")
+
+        assert resolved.target is None
+        assert resolved.remote == "explicit"
+        assert resolved.resources.account == "legacy"
 
 
 class TestSweepSchema:

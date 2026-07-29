@@ -26,7 +26,7 @@ from slurmdeck.models.env import (
     EnvironmentRecord,
     EnvironmentStatus,
 )
-from slurmdeck.models.project import ProjectConfig
+from slurmdeck.models.project import ProjectExecutionConfig
 from slurmdeck.models.remote import Remote
 from slurmdeck.services.env_cache import EnvironmentCache
 from slurmdeck.services.env_planning import EnvironmentPlanningService
@@ -274,7 +274,7 @@ class EnvironmentPreparationService:
         transport: Transport,
         remote: Remote,
         layout: RemoteLayout,
-        project: ProjectConfig,
+        project: ProjectExecutionConfig,
         project_dir: Path,
         requested_executor: BuildExecutor | None = None,
         rebuild: bool = False,
