@@ -306,7 +306,9 @@ class SlurmDeckApp(App[None]):
 
     def _reload_screens(self) -> None:
         for screen in self.screen_stack:
-            if isinstance(screen, DeckScreen):
+            # A stopping screen remains in Textual's stack briefly after its
+            # children have been pruned, so only touch a live message pump.
+            if isinstance(screen, DeckScreen) and screen.is_running:
                 screen.reload()
 
     def on_refresh_started(self, _message: RefreshStarted) -> None:

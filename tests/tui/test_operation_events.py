@@ -10,6 +10,7 @@ from slurmdeck.services.runs import RunService
 from slurmdeck.tui.app import SlurmDeckApp
 from slurmdeck.tui.controller import DeckController
 from slurmdeck.tui.messages import OperationFinished, OperationProgressed, OperationStarted, RefreshFinished
+from slurmdeck.tui.screens import DeckScreen
 
 
 class ImmediateApp:
@@ -100,6 +101,27 @@ def test_tui_feedback_keeps_mutation_visible_when_a_read_finishes(ctx) -> None:
 
     assert app.operation_text == "Submitting"
     assert app.operation_started_at == 10.0
+
+
+def test_reload_screens_skips_a_stopped_screen(ctx) -> None:
+    class ReloadTrackingScreen(DeckScreen):
+        reload_count = 0
+
+        def reload(self) -> None:
+            self.reload_count += 1
+
+    app = SlurmDeckApp(ctx)
+    screen = ReloadTrackingScreen()
+    app._screen_stacks[app.DEFAULT_MODE].append(screen)
+    screen._running = True
+
+    app._reload_screens()
+    assert screen.reload_count == 1
+
+    screen._running = False
+
+    app._reload_screens()
+    assert screen.reload_count == 1
 
 
 def test_controller_reports_cached_refresh_failure_without_overwriting_last_success(
