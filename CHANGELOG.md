@@ -7,6 +7,33 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## [0.4.0] - 2026-08-06
+
+### Added
+
+- Per-remote `agent_python` configuration and `remote add --agent-python`, so
+  clusters whose default `python3` is too old can use a shared newer
+  interpreter for SSH helpers, environment helpers, and Slurm run agents.
+
+### Changed
+
+- Environment guidance now distinguishes managed dependency installation from
+  project source snapshots and no longer recommends checkout-dependent
+  `pip install -e .` commands during remote environment builds.
+
+### Fixed
+
+- Conda activation now applies package variables from `etc/conda/env_vars.d`
+  and environment variables from `conda-meta/state` before `activate.d`
+  scripts, including Conda's non-overriding `***unset***` marker semantics.
+- Default environment log reads now fall back to the most recent attempt that
+  created logs when a later cancelled attempt never started; explicit stream
+  selection and log following remain pinned to the current/latest attempt.
+- `env status` now marks the project-desired environment consistently with
+  `env list` and `env show`.
+- Global TUI refresh skips settled cancelled runs whose remote registration was
+  removed, while still reconciling cancelled runs with active or unknown tasks.
+
 ## [0.3.0] - 2026-07-29
 
 ### Added
@@ -67,7 +94,8 @@ Initial public release.
 - Submission receipts and locks prevent automatic duplicate submission after
   uncertain remote outcomes.
 
-[Unreleased]: https://github.com/dejay-vu/slurmdeck/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/dejay-vu/slurmdeck/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/dejay-vu/slurmdeck/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/dejay-vu/slurmdeck/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/dejay-vu/slurmdeck/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/dejay-vu/slurmdeck/releases/tag/v0.1.0
