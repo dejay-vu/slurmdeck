@@ -37,6 +37,38 @@ _STATUSES = {
 }
 _ACTIVE_BUILD_STATES = {"STAGING", "QUEUED", "BUILDING", "VERIFYING", "BUILD_UNKNOWN"}
 
+_CONDA_ENV_VARS_LOADER = r"""
+import glob
+import json
+import os
+import re
+import shlex
+import sys
+
+prefix = sys.argv[1]
+variables = {}
+for path in sorted(glob.glob(os.path.join(prefix, "etc", "conda", "env_vars.d", "*"))):
+    with open(path, encoding="utf-8") as handle:
+        document = json.load(handle)
+    if not isinstance(document, dict):
+        raise SystemExit("conda package environment variables must be a JSON object")
+    variables.update(document)
+state_path = os.path.join(prefix, "conda-meta", "state")
+if os.path.isfile(state_path):
+    with open(state_path, encoding="utf-8") as handle:
+        state = json.load(handle)
+    state_variables = state.get("env_vars", {})
+    if not isinstance(state_variables, dict):
+        raise SystemExit("conda environment state env_vars must be a JSON object")
+    variables.update(state_variables)
+for name, value in variables.items():
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name) is None:
+        raise SystemExit("invalid conda environment variable name: " + repr(name))
+    if value == "***unset***":
+        continue
+    print("export {}={}".format(name, shlex.quote(str(value))))
+""".strip()
+
 
 def _utc_now():
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -495,6 +527,15 @@ def _render_sbatch(base, request, attempt):
     return "".join(script)
 
 
+def _conda_env_var_activation(prefix, *, indent=""):
+    command = f"{shlex.quote(sys.executable)} -c {shlex.quote(_CONDA_ENV_VARS_LOADER)} {shlex.quote(prefix)}"
+    return [
+        f"{indent}_slurmdeck_conda_env_vars=$({command})",
+        f'{indent}eval "$_slurmdeck_conda_env_vars"',
+        f"{indent}unset _slurmdeck_conda_env_vars",
+    ]
+
+
 def _render_build(request, attempt):
     conda = shlex.quote(request["conda_executable"])
     prefix = shlex.quote(request["prefix"])
@@ -514,6 +555,7 @@ def _render_build(request, attempt):
     lines.append(command)
     lines.append(f"export CONDA_PREFIX={prefix}")
     lines.append("export PATH={}:$PATH".format(shlex.quote(request["prefix"] + "/bin")))
+    lines.extend(_conda_env_var_activation(request["prefix"]))
     activation_dir = shlex.quote(request["prefix"] + "/etc/conda/activate.d")
     lines.extend(
         [
@@ -1093,6 +1135,11 @@ def cmd_verify_existing(args):
                     f"if [ -d {quoted}/conda-meta ]; then",
                     f"  export CONDA_PREFIX={quoted}",
                     "  export PATH={}:$PATH".format(shlex.quote(prefix + "/bin")),
+                ]
+            )
+            lines.extend(_conda_env_var_activation(prefix, indent="  "))
+            lines.extend(
+                [
                     f"  if [ -d {quoted}/etc/conda/activate.d ]; then",
                     f"    for _script in {quoted}/etc/conda/activate.d/*.sh; do",
                     '      [ -r "$_script" ] && . "$_script"',

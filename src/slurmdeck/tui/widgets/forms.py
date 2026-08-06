@@ -65,6 +65,8 @@ class RemoteFormModal(ModalScreen[RemoteDraft | None]):
                 yield Input(placeholder="user@login.example.com or ssh alias", id="remote-destination")
                 yield Label("Remote base")
                 yield Input(placeholder="$WORK/slurmdeck", id="remote-base")
+                yield Label("Agent Python")
+                yield Input(value="python3", placeholder="python3 or /shared/path/python3", id="remote-agent-python")
                 yield Label("Host-key policy")
                 yield Select(
                     [
@@ -92,9 +94,10 @@ class RemoteFormModal(ModalScreen[RemoteDraft | None]):
         method = cast(str, self.query_one("#remote-method", Select).value)
         destination = self.query_one("#remote-destination", Input).value.strip()
         base = self.query_one("#remote-base", Input).value.strip()
+        agent_python = self.query_one("#remote-agent-python", Input).value.strip()
         host_key_policy = HostKeyPolicy(cast(str, self.query_one("#remote-host-key-policy", Select).value))
-        if not name or not destination or not base:
-            self.notify("Name, destination, and remote base are required.", severity="error")
+        if not name or not destination or not base or not agent_python:
+            self.notify("Name, destination, remote base, and agent Python are required.", severity="error")
             return
         self.dismiss(
             RemoteDraft(
@@ -102,6 +105,7 @@ class RemoteFormModal(ModalScreen[RemoteDraft | None]):
                 method=method,
                 destination=destination,
                 base=base,
+                agent_python=agent_python,
                 host_key_policy=host_key_policy,
                 use=self.query_one("#remote-use", Checkbox).value,
             )

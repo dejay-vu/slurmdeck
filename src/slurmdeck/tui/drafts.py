@@ -18,6 +18,7 @@ class RemoteDraft:
     method: str
     destination: str
     base: str
+    agent_python: str
     host_key_policy: HostKeyPolicy
     use: bool
 

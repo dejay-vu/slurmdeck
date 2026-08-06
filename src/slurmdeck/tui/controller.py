@@ -63,16 +63,20 @@ def describe_error(exc: BaseException) -> str:
     return repr(exc)
 
 
+def _cancelled_run_is_unsettled(row: RunRow) -> bool:
+    """Return whether cancellation still needs scheduler/artifact reconciliation."""
+    return row.state == "cancelled" and (
+        row.summary.total == 0 or any(state in ACTIVE_TASK_STATES for state in row.summary.counts)
+    )
+
+
 def refresh_interval(runs: Sequence[RunRow]) -> float | None:
     """Auto-refresh policy: fast while submitted runs exist, slow while
     cancelled runs still have unsettled tasks, paused otherwise."""
     if any(row.state == "submitted" for row in runs):
         return FAST_INTERVAL
-    for row in runs:
-        if row.state != "cancelled":
-            continue
-        if row.summary.total == 0 or any(state in ACTIVE_TASK_STATES for state in row.summary.counts):
-            return SLOW_INTERVAL
+    if any(_cancelled_run_is_unsettled(row) for row in runs):
+        return SLOW_INTERVAL
     return None
 
 
@@ -144,7 +148,11 @@ class DeckController:
             selected = [
                 row
                 for row in runs
-                if row.state in ("submitted", "cancelled") and (run_ids is None or row.id in run_ids)
+                if (
+                    (row.state == "submitted" or _cancelled_run_is_unsettled(row))
+                    if run_ids is None
+                    else row.state in ("submitted", "cancelled") and row.id in run_ids
+                )
             ]
             by_remote: dict[str, list[str]] = {}
             for row in selected:
@@ -565,6 +573,7 @@ class DeckController:
                 host=draft.destination if draft.method == "host" else None,
                 ssh_alias=draft.destination if draft.method == "ssh_alias" else None,
                 base=draft.base,
+                agent_python=draft.agent_python,
                 host_key_policy=draft.host_key_policy,
                 use=draft.use,
             )

@@ -31,6 +31,7 @@ class Remote(StrictModel):
     host: str | None = None
     ssh_alias: str | None = None
     base: str
+    agent_python: str = "python3"
     host_key_policy: HostKeyPolicy = HostKeyPolicy.INHERIT
     #: Cache written by `slurmdeck remote connect`: ``base`` with remote-side
     #: ``~``/``$VAR`` expansion applied. Planning is pure-local and needs it.
@@ -43,6 +44,8 @@ class Remote(StrictModel):
             raise ValueError("set exactly one of 'host' or 'ssh_alias'")
         if not self.base.strip():
             raise ValueError("'base' must be a non-empty remote path")
+        if not self.agent_python.strip():
+            raise ValueError("'agent_python' must be a non-empty remote executable path")
         return self
 
     @property

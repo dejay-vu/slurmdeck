@@ -185,6 +185,75 @@ class TestEnvironmentLogsAndCancellation:
         assert "solver exploded" in log.text
         assert log.path == attempt.stderr_path
 
+    def test_logs_fall_back_past_a_cancelled_attempt_that_never_created_logs(
+        self,
+        fake_transport,
+        remote,
+        remote_root,
+        project_dir,
+    ):
+        conda = _fake_conda(remote_root / "fake-conda", create_error="solver exploded")
+        prepared = _prepare(
+            fake_transport=fake_transport,
+            remote=remote,
+            remote_root=remote_root,
+            project_dir=project_dir,
+            profile=_profile(str(conda)),
+            project=_project(project_dir),
+        )
+        failed_attempt = prepared.record.attempts[-1]
+        failed = (
+            EnvironmentExecutorClient()
+            .build(
+                fake_transport,
+                RemoteLayout(str(remote_root)),
+                prepared.record.env_id,
+                failed_attempt.attempt_id,
+            )
+            .record
+        )
+        retried = _prepare(
+            fake_transport=fake_transport,
+            remote=remote,
+            remote_root=remote_root,
+            project_dir=project_dir,
+            profile=_profile(str(conda)),
+            project=_project(project_dir),
+        ).record
+        cancelled_attempt = retried.attempts[-1]
+        cancelled = EnvironmentLifecycleService().cancel(
+            fake_transport,
+            RemoteLayout(str(remote_root)),
+            retried.env_id,
+        )
+
+        assert failed.status is EnvironmentStatus.FAILED
+        assert cancelled.status is EnvironmentStatus.CANCELLED
+        assert cancelled_attempt.started_at is None
+        assert not Path(cancelled_attempt.stdout_path).exists()
+        assert not Path(cancelled_attempt.stderr_path).exists()
+
+        log = EnvironmentLifecycleService().logs(
+            fake_transport,
+            RemoteLayout(str(remote_root)),
+            cancelled.env_id,
+            lines=20,
+        )
+
+        assert log.stream == "stderr"
+        assert log.attempt_id == failed_attempt.attempt_id
+        assert "solver exploded" in log.text
+        assert log.path == failed_attempt.stderr_path
+
+        with pytest.raises(UserError, match="unavailable"):
+            EnvironmentLifecycleService().logs(
+                fake_transport,
+                RemoteLayout(str(remote_root)),
+                cancelled.env_id,
+                lines=20,
+                stream="stderr",
+            )
+
     def test_cancel_persists_terminal_state_and_second_cancel_is_actionable(
         self,
         fake_transport,

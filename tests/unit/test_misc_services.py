@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -65,6 +67,61 @@ class TestActivationScript:
         assert "conda-meta" in script
         assert "bin/activate" in script
         assert "exit 127" in script  # fails loudly if the prefix is missing
+
+    def test_conda_activation_loads_package_and_environment_variables(self, tmp_path, monkeypatch):
+        prefix = tmp_path / "conda env"
+        (prefix / "conda-meta").mkdir(parents=True)
+        (prefix / "bin").mkdir()
+        intercepted_python = prefix / "bin" / "python3"
+        intercepted_python.write_text("#!/usr/bin/env bash\nexit 97\n", encoding="utf-8")
+        intercepted_python.chmod(0o755)
+        package_vars = prefix / "etc" / "conda" / "env_vars.d"
+        package_vars.mkdir(parents=True)
+        shell_value = "$(printf injected >&2) ' \" $HOME"
+        (package_vars / "package.json").write_text(
+            json.dumps(
+                {
+                    "FROM_PACKAGE": "package",
+                    "OVERRIDDEN": "package",
+                    "MASKED": "package",
+                    "SHELL_VALUE": shell_value,
+                }
+            ),
+            encoding="utf-8",
+        )
+        (prefix / "conda-meta" / "state").write_text(
+            json.dumps(
+                {
+                    "env_vars": {
+                        "FROM_STATE": "value with spaces",
+                        "OVERRIDDEN": "state",
+                        "MASKED": "***unset***",
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("MASKED", "inherited")
+        script = activation_script_for_binding(
+            ExistingEnvSpec(prefix=str(prefix)),
+            None,
+            self._binding(str(prefix)),
+            agent_python="python3",
+        )
+        script += 'printf "%s|%s|%s|%s|%s" "$FROM_PACKAGE" "$FROM_STATE" "$OVERRIDDEN" "$MASKED" "$SHELL_VALUE"\n'
+
+        result = subprocess.run(
+            ["bash", "--noprofile", "--norc"],
+            input=script,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert result.stdout == f"package|value with spaces|state|inherited|{shell_value}"
+        assert result.stderr == ""
+        assert script.index("_slurmdeck_conda_env_vars=$(python3") < script.index("export PATH=")
 
 
 class TestLogs:

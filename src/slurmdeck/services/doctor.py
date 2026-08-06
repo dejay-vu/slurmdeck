@@ -112,9 +112,14 @@ class DoctorService:
                 else:
                     checks.append(Check("connection", "OK", f"{remote.destination}: reachable"))
                     checks.append(
-                        Check("remote python3", "FAILED", "python3 not runnable", "Install python3 on the remote.")
+                        Check(
+                            "remote python3",
+                            "FAILED",
+                            f"{remote.agent_python} not runnable",
+                            "Configure a Python >=3.8 executable with `remote add --agent-python`.",
+                        )
                     )
-                    skip_reason = "needs remote python3"
+                    skip_reason = "needs remote agent Python"
                 if not any(check.name == "remote python3" for check in checks):
                     checks.append(Check("remote python3", "SKIPPED", skip_reason))
                 for name in ("slurm", "base", "cluster profile"):
@@ -192,14 +197,14 @@ class DoctorService:
         checks: list[Check] = []
         version = tuple(int(part) for part in observation.python_version.split("."))
         if version >= (3, 8):
-            checks.append(Check("remote python3", "OK", observation.python_version))
+            checks.append(Check("remote python3", "OK", f"{remote.agent_python}: {observation.python_version}"))
         else:
             checks.append(
                 Check(
                     "remote python3",
                     "FAILED",
-                    f"python3 is {observation.python_version}, need >= 3.8",
-                    "Load a newer python module by default on the remote.",
+                    f"{remote.agent_python} is {observation.python_version}, need >= 3.8",
+                    "Configure a newer shared executable with `remote add --agent-python`.",
                 )
             )
 

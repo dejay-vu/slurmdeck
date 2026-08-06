@@ -166,13 +166,17 @@ class TestRemoteCommands:
                 "user@login.example.com",
                 "--base",
                 "/remote/base",
+                "--agent-python",
+                "/opt/python/bin/python3",
                 "--host-key-policy",
                 "accept-new",
             ],
         )
 
         assert result.exit_code == 0, result.output
-        assert ctx.user_store.read_remote("new-cluster").host_key_policy == "accept-new"
+        remote = ctx.user_store.read_remote("new-cluster")
+        assert remote.agent_python == "/opt/python/bin/python3"
+        assert remote.host_key_policy == "accept-new"
 
     def test_remove_requires_yes_when_not_interactive(self):
         result = runner.invoke(app, ["remote", "remove", "cluster"])
@@ -583,7 +587,12 @@ class TestEnvironmentCommands:
         assert payload["resolved_resources"]["mem"] == "16G"
         assert len(fake_transport.calls) == 2
 
-    def test_registry_list_status_remove_and_not_found_contracts(self, fake_transport, remote_root):
+    def test_registry_list_status_remove_and_not_found_contracts(
+        self,
+        fake_transport,
+        remote_root,
+        monkeypatch,
+    ):
         prefix = remote_root / "external-prefix"
         prefix.mkdir()
         full_hash = "d" * 64
@@ -600,6 +609,7 @@ class TestEnvironmentCommands:
             provenance=EnvironmentProvenance(canonical_spec_hash=full_hash),
         )
         EnvRegistryClient().prepare(fake_transport, RemoteLayout(str(remote_root)), record)
+        monkeypatch.setattr("slurmdeck.cli.env._desired_env_id", lambda _config, _remote: record.env_id)
 
         listed = runner.invoke(app, ["env", "list", "--json"])
         status = runner.invoke(app, ["env", "status", record.env_id, "--json"])
@@ -611,8 +621,11 @@ class TestEnvironmentCommands:
         listed_data = _json_data(listed)
         assert listed_data[0]["record"]["env_id"] == record.env_id
         assert listed_data[0]["job_reason"] == "-"
+        assert listed_data[0]["desired_by_project"] is True
         assert status.exit_code == 0, status.output
-        assert _json_data(status)["record"]["status"] == "READY"
+        status_data = _json_data(status)
+        assert status_data["record"]["status"] == "READY"
+        assert status_data["desired_by_project"] is True
         assert isinstance(missing.exception, UserError)
         assert "not found" in str(missing.exception)
         assert removed.exit_code == 0, removed.output

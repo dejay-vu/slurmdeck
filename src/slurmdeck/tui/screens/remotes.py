@@ -146,6 +146,7 @@ class RemotesScreen(DeckScreen):
             ("Connection", "SSH alias" if remote.ssh_alias else "Host"),
             ("Configured base", remote.base),
             ("Resolved base", remote.resolved_base or "not connected"),
+            ("Agent Python", remote.agent_python),
             ("Cluster profile", "configured" if profile is not None else "not configured"),
             ("Default build executor", executor),
             ("Partition", partition),

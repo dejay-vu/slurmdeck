@@ -33,6 +33,14 @@ class TestRemote:
         assert remote.host_key_policy == HostKeyPolicy.INHERIT
         assert Remote(name="a", host="u@h", base="/x", host_key_policy="strict").host_key_policy == "strict"
 
+    def test_agent_python_defaults_and_validation(self):
+        assert Remote(name="a", host="u@h", base="/x").agent_python == "python3"
+        assert Remote(name="a", host="u@h", base="/x", agent_python="/opt/python/bin/python3").agent_python == (
+            "/opt/python/bin/python3"
+        )
+        with pytest.raises(ValidationError, match="agent_python"):
+            Remote(name="a", host="u@h", base="/x", agent_python="  ")
+
 
 class TestNames:
     def test_validate_name_rejects_traversal(self):
