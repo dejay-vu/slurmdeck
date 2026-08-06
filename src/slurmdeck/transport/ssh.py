@@ -176,7 +176,7 @@ class SshTransport:
         timeout: float = 60.0,
         check: bool = True,
     ) -> ExecResult:
-        command = "python3 - " + " ".join(shlex.quote(str(arg)) for arg in args)
+        command = shlex.quote(self.remote.agent_python) + " - " + " ".join(shlex.quote(str(arg)) for arg in args)
         return self.exec(command, input_text=script, timeout=timeout, check=check)
 
     def exec_json(self, script: str, args: Sequence[str] = (), *, timeout: float = 60.0) -> Any:
@@ -186,7 +186,7 @@ class SshTransport:
                 return json.loads(line[len(JSON_PREFIX) :])
         raise TransportError(
             "Remote script produced no structured result.",
-            command="python3 -",
+            command=f"{shlex.quote(self.remote.agent_python)} -",
             returncode=result.returncode,
             stderr=result.stderr,
         )

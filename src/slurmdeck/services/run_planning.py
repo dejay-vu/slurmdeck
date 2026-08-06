@@ -234,6 +234,7 @@ class RunPlanner:
                     project_config.env,
                     remote.cluster,
                     env_binding,
+                    agent_python=remote.agent_python,
                 )
 
         planned_tasks = tuple(
@@ -290,6 +291,7 @@ class RunPlanner:
                 task_count=len(planned_tasks),
                 run_root=remote_root,
                 code_dir=layout.snapshot_code_dir(snapshot_hash),
+                agent_python=remote.agent_python,
             ).encode(),
             f"{protocol.CONFIGS_DIR}/.keep": b"",
             f"{protocol.LOGS_DIR}/.keep": b"",

@@ -884,6 +884,7 @@ class TestOutsideProject:
             app.screen.query_one("#remote-method", Select).value = "ssh_alias"
             app.screen.query_one("#remote-destination", Input).value = "example-cluster"
             app.screen.query_one("#remote-base", Input).value = "$DATA/slurmdeck"
+            app.screen.query_one("#remote-agent-python", Input).value = "/opt/python/bin/python3"
             app.screen.query_one("#remote-host-key-policy", Select).value = "strict"
             await pilot.click("#remote-save")
             await _wait_for(lambda: "cluster" in ctx.user_store.list_remote_names())
@@ -892,6 +893,7 @@ class TestOutsideProject:
             assert remote.ssh_alias == "example-cluster"
             assert remote.host is None
             assert remote.host_key_policy == "strict"
+            assert remote.agent_python == "/opt/python/bin/python3"
 
 
 class TestNamedTargetRemotes:

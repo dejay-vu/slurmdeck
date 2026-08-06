@@ -98,6 +98,11 @@ slurmdeck remote status hpc
 If you already have a `Host` entry in `~/.ssh/config`, use
 `--ssh-alias your-alias` instead of `--host user@login.example.com`.
 
+If `python3` on the remote is older than 3.8, but a newer interpreter is
+installed at a path shared by login and compute nodes, register that path with
+`--agent-python /shared/path/to/python3`. This setting applies only to
+SlurmDeck's remote helpers and job agent.
+
 ### 3. Initialize a local project
 
 Run `init` from the project directory that contains the code you want to
@@ -287,7 +292,6 @@ env:
   name: ml
   spec_file: environment.yml
   modules: [cuda/12.1]
-  post_install: ["pip install -e ."]
   smoke_test: "python -c 'import torch'"
   channel_priority: strict
   solver: libmamba
@@ -295,6 +299,13 @@ env:
     time: "01:00:00"
     mem: 8G
 ```
+
+Managed environment attempts stage the environment specification, not the
+project source snapshot. Therefore relative requirements and post-install
+commands that need a checkout, such as `-e .` or `pip install -e .`, are not
+valid here. Put installable dependencies in the specification by immutable
+package or VCS URL (including a remotely accessible wheel URL), and run
+synchronized project source from the materialized run snapshot.
 
 This top-level form is the legacy single-target layout. In a named-target
 project, put the complete `env` block inside each applicable target alongside

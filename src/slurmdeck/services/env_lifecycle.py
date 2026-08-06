@@ -153,29 +153,43 @@ class EnvironmentLifecycleService:
         if lines < 1:
             raise UserError("Log line count must be at least 1.")
         view = self.status(transport, layout, env_id)
-        attempt = self._latest_attempt(view.record)
-        selected = stream or (
-            "stderr" if view.record.status.value in {"FAILED", "CANCELLED", "BUILD_UNKNOWN"} else "stdout"
-        )
-        if selected not in {"stdout", "stderr"}:
+        if stream is not None and stream not in {"stdout", "stderr"}:
             raise UserError("Environment log stream must be 'stdout' or 'stderr'.")
-        path = attempt.stderr_path if selected == "stderr" else attempt.stdout_path
-        result = transport.exec(f"tail -n {int(lines)} {shlex.quote(path)}", check=False, retries=1)
-        text = result.stdout
-        if stream is None and selected == "stderr" and not text.strip():
-            selected = "stdout"
-            path = attempt.stdout_path
-            result = transport.exec(f"tail -n {int(lines)} {shlex.quote(path)}", check=False, retries=1)
-            text = result.stdout
-        if result.returncode != 0:
-            raise UserError(f"Environment log is unavailable: {path}")
-        return EnvironmentLog(
-            env_id=view.record.env_id,
-            attempt_id=attempt.attempt_id,
-            stream=selected,
-            path=path,
-            text=text,
-        )
+        latest = self._latest_attempt(view.record)
+        attempts = [latest]
+        if stream is None and view.record.current_attempt is None:
+            attempts = list(reversed(view.record.attempts))
+
+        unavailable_path = latest.stderr_path if stream == "stderr" else latest.stdout_path
+        for attempt in attempts:
+            preferred = stream or (
+                "stderr" if attempt.status.value in {"FAILED", "CANCELLED", "BUILD_UNKNOWN"} else "stdout"
+            )
+            candidates = [preferred]
+            if stream is None:
+                candidates.append("stdout" if preferred == "stderr" else "stderr")
+            empty_log: EnvironmentLog | None = None
+            for selected in candidates:
+                path = attempt.stderr_path if selected == "stderr" else attempt.stdout_path
+                if attempt is latest and selected == preferred:
+                    unavailable_path = path
+                result = transport.exec(f"tail -n {int(lines)} {shlex.quote(path)}", check=False, retries=1)
+                if result.returncode != 0:
+                    continue
+                log = EnvironmentLog(
+                    env_id=view.record.env_id,
+                    attempt_id=attempt.attempt_id,
+                    stream=selected,
+                    path=path,
+                    text=result.stdout,
+                )
+                if result.stdout.strip():
+                    return log
+                if empty_log is None:
+                    empty_log = log
+            if empty_log is not None:
+                return empty_log
+        raise UserError(f"Environment log is unavailable: {unavailable_path}")
 
     def follow_logs(
         self,

@@ -17,7 +17,7 @@ def test_pyproject_declares_release_version() -> None:
     with (root / "pyproject.toml").open("rb") as stream:
         pyproject = tomllib.load(stream)
 
-    assert pyproject["project"]["version"] == "0.3.0"
+    assert pyproject["project"]["version"] == "0.4.0"
 
 
 def test_pyproject_declares_verified_dependency_floors() -> None:

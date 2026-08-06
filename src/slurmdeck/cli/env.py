@@ -305,8 +305,13 @@ def status(
     """Refresh and show one environment's effective lifecycle status."""
     set_json_output(json_output, cli_context)
     ctx = get_context()
-    remote, _project_config = _env_context(target_name, remote_name)
-    view = EnvironmentLifecycleService().status(ctx.transport(remote), ctx.layout(remote), env_id)
+    remote, project_config = _env_context(target_name, remote_name)
+    view = EnvironmentLifecycleService().status(
+        ctx.transport(remote),
+        ctx.layout(remote),
+        env_id,
+        desired_env_id=_desired_env_id(project_config, remote),
+    )
     EnvironmentCache(ctx.user_paths).remember_record(remote, view.record)
     if json_output:
         emit_json(view)

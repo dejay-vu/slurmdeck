@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from slurmdeck.agent import protocol
 from slurmdeck.errors import UserError
+from slurmdeck.models.env import EnvBinding, ExistingEnvSpec
 from slurmdeck.models.project import ProjectConfig, ProjectTarget
 from slurmdeck.models.remote import Remote
 from slurmdeck.models.resources import ResourceOverrides, Resources
@@ -147,6 +148,43 @@ def test_planner_materializes_each_target_with_its_own_resources(ctx, remote, re
     assert htc.manifest.resources.reservation is None
     assert b"--reservation" not in htc.rendered_files[protocol.SBATCH_FILE]
     assert b"#SBATCH --constraint=gpu_sku:H100" in htc.rendered_files[protocol.SBATCH_FILE]
+
+
+def test_planner_uses_the_remote_agent_interpreter_in_sbatch(ctx, remote):
+    remote = remote.model_copy(update={"agent_python": "/opt/python 3/bin/python3"})
+
+    plan = RunPlanner(ctx).plan(
+        command=CommandTemplateSpec(argv=["python3", "train.py"]),
+        name="custom-python",
+        remote=remote,
+    )
+
+    assert b"exec '/opt/python 3/bin/python3' " in plan.rendered_files[protocol.SBATCH_FILE]
+
+
+def test_planner_uses_the_remote_agent_interpreter_for_environment_activation(ctx, remote):
+    remote = remote.model_copy(update={"agent_python": "/opt/python 3/bin/python3"})
+    project = ctx.require_project().config.model_copy(update={"env": ExistingEnvSpec(prefix="/opt/env")})
+    binding = EnvBinding(
+        env_id="existing-123456789abc",
+        generation_id="",
+        prefix="/opt/env",
+        attempt_id="",
+        build_job_id="",
+    )
+
+    plan = RunPlanner(ctx).plan(
+        command=CommandTemplateSpec(argv=["python3", "train.py"]),
+        name="custom-python-env",
+        remote=remote,
+        env_binding=binding,
+        project_config=project.execution(),
+    )
+
+    activation = plan.rendered_files[protocol.ACTIVATION_FILE]
+    loader = b"_slurmdeck_conda_env_vars=$('/opt/python 3/bin/python3' -c"
+    assert loader in activation
+    assert activation.index(loader) < activation.index(b"export PATH=")
 
 
 def test_planner_rejects_a_target_config_from_another_remote(ctx, remote):

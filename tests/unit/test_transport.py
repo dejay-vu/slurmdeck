@@ -86,6 +86,28 @@ class TestSshTransportSpawns:
         # ssh must never read the terminal (it would steal TUI keystrokes)
         assert recorded["stdin"] is subprocess.DEVNULL
 
+    def test_exec_python_uses_the_remote_agent_interpreter(self, monkeypatch, tmp_path):
+        recorded: dict[str, object] = {}
+
+        def fake_run(argv, **kwargs):
+            recorded["argv"] = argv
+            recorded.update(kwargs)
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        remote = Remote(
+            name="x",
+            host="user@host.example",
+            base="/base",
+            agent_python="/opt/python 3/bin/python3",
+        )
+
+        SshTransport(remote, control_dir=tmp_path / "cm").exec_python("print('ok')", ["probe", "two words"])
+
+        argv = recorded["argv"]
+        assert isinstance(argv, list)
+        assert argv[-1] == "'/opt/python 3/bin/python3' - probe 'two words'"
+
     def test_directory_upload_creates_the_remote_destination_within_the_rsync_call(self, monkeypatch, tmp_path):
         recorded: dict[str, object] = {}
 

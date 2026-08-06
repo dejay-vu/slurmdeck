@@ -104,7 +104,13 @@ def _fake_conda(
         '  while [ "$#" -gt 0 ]; do\n'
         '    if [ "$1" = "--prefix" ]; then prefix="$2"; shift 2; else shift; fi\n'
         "  done\n"
-        '  mkdir -p "$prefix/conda-meta" "$prefix/bin" "$prefix/etc/conda/activate.d"\n'
+        '  mkdir -p "$prefix/conda-meta" "$prefix/bin" "$prefix/etc/conda/activate.d" '
+        '"$prefix/etc/conda/env_vars.d"\n'
+        '  echo \'{"SLURMDECK_TEST_PACKAGE":"from-package","SLURMDECK_TEST_STATE":"from-package",'
+        '"SLURMDECK_TEST_MASKED":"from-package"}\' '
+        '> "$prefix/etc/conda/env_vars.d/package.json"\n'
+        '  echo \'{"env_vars":{"SLURMDECK_TEST_STATE":"from-state",'
+        '"SLURMDECK_TEST_MASKED":"***unset***"}}\' > "$prefix/conda-meta/state"\n'
         '  echo "export SLURMDECK_TEST_ACTIVATED=yes" > "$prefix/etc/conda/activate.d/slurmdeck-test.sh"\n'
         "  exit 0\n"
         "fi\n"
@@ -163,6 +169,26 @@ def _wait_for_process_exit(pid: int, *, timeout: float = 5.0) -> None:
 def test_remote_env_agent_rejects_reservation_option_injection():
     with pytest.raises(ValueError, match="reservation"):
         env_agent._directive("reservation", "research --exclusive")
+
+
+def test_remote_env_agent_sbatch_reuses_its_configured_interpreter(monkeypatch):
+    monkeypatch.setattr(env_agent.sys, "executable", "/opt/python 3/bin/python3")
+
+    script = env_agent._render_sbatch(
+        "/base",
+        {
+            "env_id": "env-1",
+            "attempt_id": "attempt-1",
+            "resolved_resources": {},
+        },
+        {
+            "build_dir": "/base/build",
+            "stdout_path": "/base/build/stdout.log",
+            "stderr_path": "/base/build/stderr.log",
+        },
+    )
+
+    assert "'/opt/python 3/bin/python3' /base/build/env_agent.py build" in script
 
 
 class TestSlurmEnvironmentExecutor:
@@ -309,6 +335,7 @@ class TestSlurmEnvironmentExecutor:
         monkeypatch,
     ):
         monkeypatch.setenv("CI", "true")
+        monkeypatch.setenv("SLURMDECK_TEST_MASKED", "inherited")
         conda = _fake_conda(remote_root / "fake-conda")
         prepared = _prepare(
             fake_transport=fake_transport,
@@ -316,7 +343,15 @@ class TestSlurmEnvironmentExecutor:
             remote_root=remote_root,
             project_dir=project_dir,
             profile=_profile(str(conda)),
-            project=_project(project_dir, smoke_test='[ "${SLURMDECK_TEST_ACTIVATED:-}" = yes ]'),
+            project=_project(
+                project_dir,
+                smoke_test=(
+                    '[ "${SLURMDECK_TEST_ACTIVATED:-}" = yes ] '
+                    '&& [ "${SLURMDECK_TEST_PACKAGE:-}" = from-package ] '
+                    '&& [ "${SLURMDECK_TEST_STATE:-}" = from-state ] '
+                    '&& [ "${SLURMDECK_TEST_MASKED:-}" = inherited ]'
+                ),
+            ),
         )
         attempt = prepared.record.attempts[-1]
 
@@ -373,7 +408,15 @@ class TestSlurmEnvironmentExecutor:
             remote_root=remote_root,
             project_dir=project_dir,
             profile=_profile(str(conda)),
-            project=_project(project_dir, smoke_test='[ "${SLURMDECK_TEST_ACTIVATED:-}" = yes ]'),
+            project=_project(
+                project_dir,
+                smoke_test=(
+                    '[ "${SLURMDECK_TEST_ACTIVATED:-}" = yes ] '
+                    '&& [ "${SLURMDECK_TEST_PACKAGE:-}" = from-package ] '
+                    '&& [ "${SLURMDECK_TEST_STATE:-}" = from-state ] '
+                    '&& [ "${SLURMDECK_TEST_MASKED:-}" = inherited ]'
+                ),
+            ),
             rebuild=True,
         )
         next_attempt = rebuilding.record.attempts[-1]

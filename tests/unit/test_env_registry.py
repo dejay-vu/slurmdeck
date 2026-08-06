@@ -154,6 +154,7 @@ class TestEnvironmentRegistryHelper:
                     "argparse",
                     "contextlib",
                     "fcntl",
+                    "glob",
                     "hashlib",
                     "json",
                     "os",

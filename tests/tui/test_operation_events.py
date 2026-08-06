@@ -3,10 +3,14 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from slurmdeck.models.remote import Remote
 from slurmdeck.models.resources import ResourceOverrides
 from slurmdeck.models.run import CommandTemplateSpec
+from slurmdeck.models.status import RunSummary
 from slurmdeck.operations import OperationEvent, OperationPhase, OperationStatus
 from slurmdeck.services.runs import RunService
+from slurmdeck.services.status import RefreshReport, StatusService
+from slurmdeck.storage.repos import RunRepo
 from slurmdeck.tui.app import SlurmDeckApp
 from slurmdeck.tui.controller import DeckController
 from slurmdeck.tui.messages import OperationFinished, OperationProgressed, OperationStarted, RefreshFinished
@@ -156,3 +160,67 @@ def test_controller_reports_cached_refresh_failure_without_overwriting_last_succ
     assert "slurmctld unavailable" in finished.error
     assert controller.last_refresh_at == 123.0
     assert controller.connection == "ok"
+
+
+def test_global_refresh_skips_settled_cancelled_run_from_removed_remote_but_keeps_settling_runs(
+    ctx,
+    remote,
+    remote_root,
+    monkeypatch,
+) -> None:
+    runs = RunService(ctx)
+    active = runs.plan(
+        command=CommandTemplateSpec(argv=["true"]),
+        overrides=ResourceOverrides(),
+        remote=remote,
+    )
+    repo = RunRepo(ctx.db())
+    repo.set_state(active.id, "submitted")
+
+    retired = Remote(
+        name="retired",
+        host="user@retired.example.com",
+        base=str(remote_root / "retired"),
+        resolved_base=str(remote_root / "retired"),
+    )
+    ctx.user_store.add_remote(retired)
+    cancelled = runs.plan(
+        command=CommandTemplateSpec(argv=["true"]),
+        overrides=ResourceOverrides(),
+        remote=retired,
+    )
+    repo.set_state(cancelled.id, "cancelled")
+    repo.set_summary(cancelled.id, RunSummary(total=1, counts={"CANCELLED": 1}))
+    ctx.user_store.remove_remote(retired.name)
+
+    settling = runs.plan(
+        command=CommandTemplateSpec(argv=["true"]),
+        overrides=ResourceOverrides(),
+        remote=remote,
+    )
+    repo.set_state(settling.id, "cancelled")
+    repo.set_summary(settling.id, RunSummary(total=1, counts={"RUNNING": 1}))
+
+    refreshed: list[list[str]] = []
+
+    def record_refresh(
+        _service: StatusService,
+        _transport: object,
+        _layout: object,
+        run_ids: list[str] | None = None,
+        **_kwargs: object,
+    ) -> RefreshReport:
+        assert run_ids is not None
+        refreshed.append(run_ids)
+        return RefreshReport(refreshed=run_ids)
+
+    monkeypatch.setattr(StatusService, "refresh", record_refresh)
+    app = ImmediateApp()
+    controller = DeckController(app, ctx)  # type: ignore[arg-type]
+
+    controller.refresh_now()
+
+    assert len(refreshed) == 1
+    assert set(refreshed[0]) == {active.id, settling.id}
+    finished = next(message for message in reversed(app.messages) if isinstance(message, RefreshFinished))
+    assert finished.ok is True

@@ -40,6 +40,7 @@ may cache a read-only capability observation.
 name: hpc
 host: user@login.example.com       # XOR ssh_alias: cluster-alias
 base: $DATA/slurmdeck              # $VARS and ~ expand remotely
+agent_python: python3              # Python >=3.8 on login and compute nodes
 host_key_policy: inherit           # inherit | strict | accept-new
 resolved_base: /data/user/slurmdeck
 ```
@@ -55,6 +56,13 @@ entry in `known_hosts`. `accept-new` is an explicit trust-on-first-use choice:
 OpenSSH adds a new key automatically but still rejects a changed key. Confirm
 the host fingerprint through a trusted channel before choosing it. SlurmDeck
 never disables changed-key checks.
+
+`agent_python` defaults to `python3`. Set it with `remote add --agent-python`
+when the cluster's default interpreter is too old but a newer executable is
+available at the same path on login and compute nodes. SlurmDeck uses this
+interpreter for SSH helper scripts, managed-environment helpers, and the run
+agent launched by `sbatch`; it does not change the Python executable used by a
+submitted workload command.
 
 Connection details do not authorize software builds. Managed prepare requires
 an explicit `cluster` policy, stored in the same file and shared by every
@@ -168,7 +176,6 @@ env:                              # optional; managed example
   name: ml
   spec_file: environment.yml
   modules: [cuda/12.1]
-  post_install: ["pip install -e ."]
   smoke_test: "python -c 'import torch'"
   channel_priority: strict        # strict | flexible | disabled
   solver: libmamba                # libmamba | classic
@@ -183,6 +190,13 @@ sync:
   extra_ignores: ["data/", "*.ckpt"]
   allow_sensitive_files: []        # exact reviewed paths only; normally keep empty
 ```
+
+Managed environment attempts stage `spec_file`, but not the project source
+snapshot. Relative requirements and post-install commands that require a
+checkout, including `-e .` and `pip install -e .`, therefore cannot be used in
+this block. Use an immutable package or VCS URL (including a remotely
+accessible wheel URL) for installable project dependencies, or execute
+synchronized source directly from the run snapshot.
 
 In this layout, an explicit `--remote` overrides the project remote for an
 operation. Without one, SlurmDeck uses the project remote and then the
@@ -347,6 +361,13 @@ covers backend intent, spec bytes, modules, post-install, smoke, channel
 priority, and solver. Each attempt receives its own `CONDARC`, home/config and
 package directories. SlurmDeck records explicit package URLs, rejects URLs
 outside the declared channels, and never accepts channel Terms of Service.
+
+Managed and external conda-prefix activation applies package variables from
+`etc/conda/env_vars.d`, then the environment's `conda-meta/state` variables,
+then `activate.d` scripts. This preserves variables declared by
+`environment.yml` or `conda env config vars`; Conda's `***unset***` marker
+suppresses that environment's value without clearing a value inherited from
+the parent shell. No login shell is required.
 
 `--rebuild` creates a new attempt and immutable generation. There is no
 `--force` alias and existing runs continue to reference their exact generation.

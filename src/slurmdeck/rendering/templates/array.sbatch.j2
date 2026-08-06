@@ -26,7 +26,7 @@
 #SBATCH --output={{ run_root }}/logs/task_%A_%a.out
 #SBATCH --error={{ run_root }}/logs/task_%A_%a.err
 
-exec python3 {{ (run_root ~ "/agent.py") | shell_quote }} exec \
+exec {{ agent_python | shell_quote }} {{ (run_root ~ "/agent.py") | shell_quote }} exec \
   --run-root {{ run_root | shell_quote }} \
   --code-dir {{ code_dir | shell_quote }} \
   --index "$SLURM_ARRAY_TASK_ID"

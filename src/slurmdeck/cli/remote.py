@@ -72,6 +72,11 @@ def add(
     host: str | None = typer.Option(None, "--host", help="SSH destination, e.g. user@login.example.com."),
     ssh_alias: str | None = typer.Option(None, "--ssh-alias", help="Host alias from your ~/.ssh/config."),
     base: str = typer.Option(..., "--base", help="Remote base directory for slurmdeck state (may use $VARS)."),
+    agent_python: str = typer.Option(
+        "python3",
+        "--agent-python",
+        help="Python >=3.8 executable available on both remote login and compute nodes.",
+    ),
     host_key_policy: HostKeyPolicy = typer.Option(
         HostKeyPolicy.INHERIT,
         "--host-key-policy",
@@ -87,6 +92,7 @@ def add(
         host=host,
         ssh_alias=ssh_alias,
         base=base,
+        agent_python=agent_python,
         host_key_policy=host_key_policy,
         use=use,
     )

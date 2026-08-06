@@ -68,6 +68,7 @@ class RemoteService:
         host: str | None,
         ssh_alias: str | None,
         base: str,
+        agent_python: str = "python3",
         host_key_policy: HostKeyPolicy = HostKeyPolicy.INHERIT,
         use: bool = False,
     ) -> Remote:
@@ -77,6 +78,7 @@ class RemoteService:
                 host=host,
                 ssh_alias=ssh_alias,
                 base=base,
+                agent_python=agent_python,
                 host_key_policy=host_key_policy,
             )
         except ValidationError as exc:
